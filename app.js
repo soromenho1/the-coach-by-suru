@@ -5,7 +5,7 @@
   const root = document.querySelector('#app');
   const assessments = window.CoachAssessments;
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const brand = () => '<div class="brand">THE COACH<small>by Suru · v0.6</small></div>';
+  const brand = () => '<div class="brand">THE COACH<small>by Suru · v0.7</small></div>';
   const button = (text, action, style = 'dark') => `<button class="btn ${style}" data-action="${action}">${text}</button>`;
   let view = 0, assessmentDraft = null;
   const page = html => { ++view; assessmentDraft = null; root.innerHTML = `<main class="app">${html}</main>`; };
@@ -68,7 +68,7 @@
     } else {
       selected = account;
       page(head(`Olá, ${name(account)} 👋`) + '<p class="muted">Área do aluno</p>' +
-        statsPlaceholder() + '<div class="card"><span class="tag">TREINO DE HOJE</span><h2 style="margin-top:12px">Plano de treino</h2><p class="muted">Ainda não há um plano disponível nesta versão.</p></div>' + modules() + button('Terminar sessão', 'logout', 'light'));
+        statsPlaceholder() + '<div class="card"><span class="tag">TREINO DE HOJE</span><h2 style="margin-top:12px">Plano de treino</h2><p class="muted">Escolhe o treino que vais realizar hoje.</p>' + button('Abrir planos e treinos', 'plan', 'green') + '</div>' + modules() + button('Terminar sessão', 'logout', 'light'));
       refreshStats();
     }
   }
@@ -99,6 +99,12 @@
   function modulePage(action) {
     if (!account || !selected || (coach() ? !students.some(s => s.id === selected.id) : selected.id !== account.id)) return;
     if (action === 'evals' || action === 'progress') return assessmentPage(action);
+    if (action === 'plan') {
+      page(head('Plano de treino') + '<section id="workoutArea" style="overflow-wrap:anywhere"></section>');
+      const context = currentContext();
+      window.mountCoachWorkouts(root.querySelector('#workoutArea'), {client: sb, account: context.actor, studentId: context.studentId, valid: context.valid, back: () => coach() ? profile(context.studentId) : dashboard()});
+      return;
+    }
     const title = action === 'plan' ? 'Plano de treino' : moduleItems.find(m => m[3] === action)?.[1];
     if (!title) return;
     page(head(title, 'backProfile') + `<div class="card"><b>${escape(name(selected))}</b><p class="muted" style="margin-top:12px">Este módulo ainda não está ligado a dados reais. Não existem registos disponíveis nesta versão.</p></div>`);

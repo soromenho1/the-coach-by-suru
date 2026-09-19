@@ -12,7 +12,7 @@ const otherId = '00000000-0000-4000-8000-000000000003';
 const user = {id:trainerId, aud:'authenticated',role:'authenticated',email:'trainer@example.test'};
 const token = [Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url'),Buffer.from(JSON.stringify({sub:trainerId,role:'authenticated',aud:'authenticated',exp:Math.floor(Date.now()/1000)+3600})).toString('base64url'),'test-signature'].join('.');
 const appServer = http.createServer((req,res) => {
-  const file = {'/':'index.html','/app.js':'app.js','/assessments.js':'assessments.js'}[req.url];
+  const file = {'/':'index.html','/app.js':'app.js','/assessments.js':'assessments.js','/workouts.js':'workouts.js','/workout-ui.js':'workout-ui.js'}[req.url];
   if(!file) {res.writeHead(404);res.end();return;}
   res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':'text/html');
   res.end(fs.readFileSync(path.join(project,file)));
