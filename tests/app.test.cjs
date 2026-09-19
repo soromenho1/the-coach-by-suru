@@ -6,7 +6,8 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../app.js')
 const settle = async () => { for (let i=0;i<12;i++) await new Promise(r=>setTimeout(r,1)); };
 function setup({role='trainer', missing=false, errorTable, delay=false, profiles, links, sdk=true}={}) {
   const queries=[], listeners={}, pending=[];
-  const root={innerHTML:'',addEventListener:(e,f)=>listeners[e]=f};
+  const nodes = {};
+  const root={innerHTML:'',addEventListener:(e,f)=>listeners[e]=f,querySelector:key=>nodes[key] ||= {innerHTML:''}};
   let auth;
   const own={id:'self', full_name:'Nome real', role};
   const others=profiles || [{id:'student-1',full_name:'Aluno associado',role:'student'},{id:'student-2',full_name:'Outro treinador',role:'student'}];
@@ -14,7 +15,7 @@ function setup({role='trainer', missing=false, errorTable, delay=false, profiles
   const sb={auth:{onAuthStateChange:f=>auth=f,signOut:async()=>{auth('SIGNED_OUT',null);return {};},getSession:async()=>({data:{session:{user:{id:'self'}}}}),signInWithPassword:async()=>{auth('SIGNED_IN',{user:{id:'self'}});return {};}} ,from(table){
     const q={table,filters:[]};queries.push(q);
     const chain={select(){return chain;},eq(k,v){q.filters.push([k,v]);return chain;},in(k,v){q.ids=v;return chain;},order(){return chain;},range(a,b){q.range=[a,b];return chain;},maybeSingle(){q.single=true;return chain;},then(resolve,reject){
-      let data=table==='profiles'?[own,...others]:relations;
+      let data=table==='profiles'?[own,...others]:table==='trainer_students'?relations:[];
       data=data.filter(row=>q.filters.every(([k,v])=>row[k]===v)&&(!q.ids||q.ids.includes(row.id)));
       if(q.range)data=data.slice(q.range[0],q.range[1]+1);
       const result={data:q.single?(missing?null:data[0]):data,error:table===errorTable?{message:'denied'}:null};
@@ -22,11 +23,11 @@ function setup({role='trainer', missing=false, errorTable, delay=false, profiles
       return Promise.resolve(result).then(resolve,reject);
     }};return chain;
   }};
-  vm.runInNewContext(source,{document:{querySelector:()=>root},window:{supabase:sdk?{createClient:()=>sb}:undefined},setTimeout});
+  vm.runInNewContext(source,{document:{querySelector:()=>root},window:{supabase:sdk?{createClient:()=>sb}:undefined,CoachAssessments:require('../assessments.js'),crypto:require('node:crypto')},setTimeout});
   return {root,queries,pending,emit:(event,user='self')=>auth(event,user?{user:{id:user}}:null),click(action,student){listeners.click({target:{closest:()=>({dataset:{action,student}})}});},submit:()=>listeners.submit({preventDefault(){},target:{id:'loginForm',elements:{email:{value:'a@b.pt'},password:{value:'password'}},querySelector:()=>({})}})};
 }
 test('restores trainer and shows only active associations',async()=>{const a=setup();a.emit('INITIAL_SESSION');await settle();assert.match(a.root.innerHTML,/Área do treinador/);a.click('list');assert.match(a.root.innerHTML,/Aluno associado/);assert.doesNotMatch(a.root.innerHTML,/Outro treinador/);assert.ok(a.queries.some(q=>q.table==='trainer_students'&&q.filters.some(([k,v])=>k==='active'&&v===true)));});
-test('student sees own profile, never queries trainer associations',async()=>{const a=setup({role:'student'});a.emit('INITIAL_SESSION');await settle();assert.match(a.root.innerHTML,/Nome real/);assert.match(a.root.innerHTML,/Área do aluno/);assert.equal(a.queries.length,1);a.click('list');assert.match(a.root.innerHTML,/Área do aluno/);});
+test('student sees own profile, never queries trainer associations',async()=>{const a=setup({role:'student'});a.emit('INITIAL_SESSION');await settle();assert.match(a.root.innerHTML,/Nome real/);assert.match(a.root.innerHTML,/Área do aluno/);assert.equal(a.queries.filter(q=>q.table==='trainer_students').length,0);a.click('list');assert.match(a.root.innerHTML,/Área do aluno/);});
 test('admin has a distinct area and the same association restriction',async()=>{const a=setup({role:'admin'});a.emit('INITIAL_SESSION');await settle();assert.match(a.root.innerHTML,/Área de administração/);a.click('list');assert.doesNotMatch(a.root.innerHTML,/Outro treinador/);});
 test('unknown role fails closed',async()=>{const a=setup({role:'owner'});a.emit('INITIAL_SESSION');await settle();assert.match(a.root.innerHTML,/não tem uma área válida/);assert.equal(a.queries.length,1);});
 test('missing profile fails closed',async()=>{const a=setup({missing:true});a.emit('INITIAL_SESSION');await settle();assert.match(a.root.innerHTML,/ainda não tem um perfil/);});

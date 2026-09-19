@@ -1,26 +1,53 @@
-# The Coach by Suru · v0.5
+# The Coach by Suru · v0.6
 
-Aplicação estática em português. `index.html` conserva os estilos da v0.4 e carrega `app.js`, com Supabase Auth e encaminhamento pelo perfil autenticado.
+Aplicação estática em português com Supabase Auth. A v0.6 liga a Avaliação física e a Evolução a `public.assessments`, preservando o CSS da v0.5.
 
-## Executar
+## Executar e testar
 
-Servir a pasta com `python3 -m http.server 8000` e abrir `http://localhost:8000`. É necessária ligação à Internet para o SDK e Supabase. Testes automáticos: `node --test tests/app.test.cjs` (Node 18 ou superior).
+```sh
+python3 -m http.server 8000 --bind 127.0.0.1
+# Abrir http://localhost:8000
+node --test tests/*.test.cjs
+```
 
-## Autenticação e dados
+Node 18 ou superior para os testes. A aplicação precisa de Internet para o SDK e o Supabase. Não existe compilação nem dependência Node em produção.
 
-- A configuração pública existente aponta para `ihpqwfxxjbpjizuoeqqf.supabase.co`. O frontend contém apenas a Publishable Key.
-- `public.profiles`: `id` corresponde ao utilizador autenticado; `full_name` e `role` definem o nome e a área. Roles suportados: `student`, `trainer`, `admin`. Perfil ausente, role desconhecido ou erro de leitura bloqueiam o acesso à área.
-- O aluno vê o seu próprio perfil. Treinador e administrador têm áreas identificadas separadamente; ambos consultam apenas os seus alunos associados, sem acesso global implícito para admin.
-- `public.trainer_students`: filtra `trainer_id = session.user.id` e `active = true`; só lê perfis `student` dos `student_id` encontrados. Suporta UUIDs, paginação e associações vazias.
-- A sessão inicial e alterações de autenticação recarregam o perfil. Logout ou mudança de conta invalidam respostas pendentes e removem os dados anteriores do ecrã. Os antigos dados `tc_*` de localStorage não são utilizados.
-- Os cartões e estilos de acompanhamento mantêm-se. Valores fictícios e gravações simuladas foram substituídos por estados sem dados. A persistência de anamnese, avaliações, planos, treinos, água, cardio e check-ins não é implementada nesta versão; não se assumem colunas dessas tabelas.
+O teste de navegador requer Playwright e Chromium instalados no ambiente de testes:
 
-## Segurança e validação
+```sh
+node tests/browser-assessments.cjs
+# Se o Playwright estiver instalado fora do projeto:
+COACH_PLAYWRIGHT=/caminho/para/node_modules/playwright node tests/browser-assessments.cjs
+```
 
-O filtro no frontend não substitui RLS. Segundo a configuração confirmada pelo proprietário, RLS está ativo nas tabelas e `public.is_trainer_of(student uuid)` verifica associações ativas. As políticas devem permitir leitura do próprio perfil e dos alunos associados, impedir acesso a alunos alheios/inativos e impedir alterações do próprio `role` ou criação não autorizada de associações. A definição das políticas não foi disponibilizada nem alterada nesta entrega.
+## Funcionalidades
 
-As consultas de schema às colunas confirmadas, com `limit=0` e a chave pública, responderam HTTP 200. Isto verifica a disponibilidade das colunas, não comprova isolamento RLS. Os testes locais simulam respostas Supabase; antes de publicar, validar com contas reais de treinador e aluno, incluindo dois treinadores, uma associação inativa, logout e recarregamento da página.
+- Áreas por `profiles.role`: `trainer`, `student` e `admin`. O aluno consulta apenas as suas avaliações. O formulário de criação é disponibilizado a treinador/admin com associação ativa, sem acesso global implícito para admin.
+- Antes de consultar ou gravar, confirma `trainer_students.trainer_id = account.id`, `student_id` e `active = true`. As políticas RLS continuam a ser a autoridade no servidor.
+- Avaliação com data, peso, altura, massa gorda, massa muscular, peito, cintura, abdómen, anca, braços, coxas, gémeos e observações. Os nomes exatos estão em [SCHEMA.md](SCHEMA.md).
+- Aceita vírgula ou ponto decimal; rejeita números negativos, valores não finitos, datas inválidas e gordura acima de 100%. Exige uma data e pelo menos uma medição. Campos opcionais vazios são enviados como `NULL`; zero não é confundido com ausência de dados.
+- INSERT em `assessments` com o `student_id` selecionado. Um UUID por formulário evita duplicação ao repetir uma tentativa cuja resposta se perdeu; não usa UPDATE nem UPSERT. `created_at` usa o default `now()` do servidor.
+- Mensagens claras de sucesso e erro. Falhas preservam os campos preenchidos. Erros de permissão não desencadeiam alterações de RLS nem gravações alternativas.
+- Histórico completo, paginado na leitura, ordenado por `assessment_date DESC`, depois `created_at DESC` e `id DESC` para desempate. Detalhes de todas as medidas e observações podem ser expandidos.
+- Cartões Peso/Massa gorda mostram a avaliação cronologicamente mais recente. Sem avaliação ou sem uma dessas medidas, mostram `—`; não recuperam silenciosamente valores de uma avaliação antiga.
+- Evolução mostra histórico real de peso e massa gorda e a diferença última − primeira avaliação. Gordura é comparada em pontos percentuais. Se uma medição faltar num extremo, a diferença é `—`.
+- Perfil, histórico e evolução consultam novamente o Supabase ao serem abertos, incluindo após recarregar. Não guardam avaliações em localStorage.
+- Respostas de consultas antigas não substituem uma nova página ou conta. Uma mudança de sessão durante a verificação de associação impede a gravação pendente. Eventos de autenticação repetidos ao focar a janela não apagam um formulário em preenchimento.
 
-Referências: [eventos de autenticação](https://supabase.com/docs/reference/javascript/auth-onauthstatechange), [chaves públicas](https://supabase.com/docs/guides/getting-started/api-keys), [segurança e RLS](https://supabase.com/docs/guides/database/secure-data).
+Os restantes módulos permanecem com os estados sem dados da v0.5. O formulário usa os cartões, cores e campos existentes; inputs decimais e datas têm tamanho de letra adequado a iPhone.
 
-Validação desta entrega: 16 testes automáticos aprovados; login carregado no Chromium com SDK Supabase real; navegação treinador → aluno → módulo → voltar verificada no navegador com dados simulados, sem erros JavaScript. Layout mobile inspecionado a 390 px e CSS comparado com o backup da v0.4, sem alterações.
+## Segurança e schema
+
+A aplicação usa exclusivamente a Publishable Key já configurada para `ihpqwfxxjbpjizuoeqqf.supabase.co`. Não contém chave secreta nem credencial com privilégios de serviço. Não modifica políticas, tabelas ou permissões.
+
+O proprietário confirmou as 19 colunas, defaults e políticas documentados em [SCHEMA.md](SCHEMA.md). A API aceitou um SELECT explícito dessas 19 colunas com `limit=0` (HTTP 200). Não foi identificada necessidade de migração SQL.
+
+## Validação da v0.6
+
+- 44 testes automáticos: regressão da v0.5, validação de todos os campos, acesso por role/associação, paginação, datas, diferenças, erros de RLS e repetição de pedidos sem duplicação.
+- Chromium, a 390 e 1440 px: fluxo treinador → Maria → Avaliação física, todos os campos, erro de INSERT, gravação, histórico, cartões, avaliação retroativa, recarregamento, evolução, associação desativada e erro de leitura. Sem erros JavaScript nem overflow horizontal. O teste carrega o SDK real e simula os endpoints Auth/REST; as medições de teste nunca são enviadas ao Supabase real.
+- A persistência após recarregamento foi confirmada nesse servidor simulado. A gravação e leitura autenticadas na Maria real não foram testadas: falta uma sessão de treinador e medidas reais ou autorização explícita para registos de teste. A configuração RLS foi confirmada pelo proprietário, mas não auditada diretamente no servidor.
+
+Para validação real, iniciar sessão como treinador em `http://localhost:8000`, abrir Maria, guardar medidas autorizadas, recarregar e confirmar histórico, cartões e evolução. Testar também um aluno não associado e uma associação inativa com contas de teste autorizadas. Não introduzir medições fictícias num perfil real.
+
+Referências: [INSERT Supabase](https://supabase.com/docs/reference/javascript/insert), [eventos de autenticação](https://supabase.com/docs/reference/javascript/auth-onauthstatechange), [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security).
