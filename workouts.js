@@ -82,7 +82,7 @@
     const logs=await all(()=>select(c,'set_logs').eq('session_id',id).order('set_number').order('id'));
     return {session:row,detail,logs};
   }
-  // A reproducible UUID per prescribed set prevents duplicates across retries/tabs.
+  // A reproducible UUID per set prevents duplicates across retries/tabs.
   async function logId(sessionId,exerciseId,setNumber,cryptoApi){
     const bytes=new Uint8Array(await cryptoApi.subtle.digest('SHA-256',new TextEncoder().encode(`${sessionId}:${exerciseId}:${setNumber}`))).slice(0,16);
     bytes[6]=(bytes[6]&15)|80;bytes[8]=(bytes[8]&63)|128;
@@ -92,7 +92,7 @@
     own(a,s);const values=logValues(v);const ctx=await session(c,a,s,sessionId);
     if(ctx.session.finished_at)throw fail('Esta sessão já foi concluída.');
     const exercise=ctx.detail?.exercises.find(e=>e.id===exerciseId);
-    if(!exercise||!Number.isInteger(setNumber)||setNumber<1||setNumber>exercise.sets)throw fail('Esta série não pertence ao treino da sessão.');
+    if(!exercise||!Number.isInteger(setNumber)||setNumber<1||setNumber>2147483647)throw fail('Esta série não pertence ao treino da sessão.');
     const existing=ctx.logs.find(l=>l.exercise_id===exerciseId&&l.set_number===setNumber);
     if(existing)return {row:existing,recovered:true};
     check(current);return insert(c,'set_logs',{...values,id,session_id:sessionId,exercise_id:exerciseId,set_number:setNumber},q=>q.eq('session_id',sessionId).eq('exercise_id',exerciseId));
@@ -100,8 +100,6 @@
   async function finish(c,a,s,id,notes,current=()=>true){
     own(a,s);const ctx=await session(c,a,s,id);
     if(ctx.session.finished_at)return ctx.session;
-    const ex=ctx.detail?.exercises;
-    if(!ex?.length||ex.some(e=>!Number.isInteger(e.sets)||e.sets<1||e.sets>100||Array.from({length:e.sets},(_,i)=>i+1).some(n=>!ctx.logs.some(l=>l.exercise_id===e.id&&l.set_number===n&&l.completed===true))))throw fail('Guarda todas as séries antes de concluir o treino.');
     check(current);const {error}=await c.from('workout_sessions').update({finished_at:new Date().toISOString(),notes:text(notes)}).eq('id',id).eq('student_id',s).is('finished_at',null);
     if(error)throw error;
     const row=await one(select(c,'workout_sessions').eq('id',id).eq('student_id',s));

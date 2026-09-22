@@ -5,7 +5,7 @@
   const root = document.querySelector('#app');
   const assessments = window.CoachAssessments;
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const brand = () => '<div class="brand">THE COACH<small>by Suru · v0.7</small></div>';
+  const brand = () => '<div class="brand">THE COACH<small>by Suru · v0.8</small></div>';
   const button = (text, action, style = 'dark') => `<button class="btn ${style}" data-action="${action}">${text}</button>`;
   let view = 0, assessmentDraft = null;
   const page = html => { ++view; assessmentDraft = null; root.innerHTML = `<main class="app">${html}</main>`; };
@@ -86,6 +86,7 @@
     refreshStats();
   }
   const moduleItems = [
+    ['🍽️', 'Nutrição', 'Metas, macros e hidratação', 'nutrition'],
     ['🩺', 'Anamnese', 'Saúde, histórico e objetivos', 'anam'],
     ['📏', 'Avaliação física', 'Peso, gordura e perímetros', 'evals'],
     ['📈', 'Evolução', 'Histórico e gráficos', 'progress'],
@@ -99,6 +100,18 @@
   function modulePage(action) {
     if (!account || !selected || (coach() ? !students.some(s => s.id === selected.id) : selected.id !== account.id)) return;
     if (action === 'evals' || action === 'progress') return assessmentPage(action);
+    if (action === 'anam') {
+      page(head('Anamnese') + '<section id="anamnesisArea" style="overflow-wrap:anywhere"></section>');
+      const context = currentContext();
+      window.mountCoachAnamnesis(root.querySelector('#anamnesisArea'), {client: sb, account: context.actor, studentId: context.studentId, studentName: name(selected), valid: context.valid, back: () => coach() ? profile(context.studentId) : dashboard()});
+      return;
+    }
+    if (action === 'nutrition') {
+      page(head('Nutrição') + '<section id="nutritionArea" style="overflow-wrap:anywhere"></section>');
+      const context = currentContext();
+      window.mountCoachNutrition(root.querySelector('#nutritionArea'), {client: sb, account: context.actor, studentId: context.studentId, studentName: name(selected), valid: context.valid, back: () => coach() ? profile(context.studentId) : dashboard()});
+      return;
+    }
     if (action === 'plan') {
       page(head('Plano de treino') + '<section id="workoutArea" style="overflow-wrap:anywhere"></section>');
       const context = currentContext();
