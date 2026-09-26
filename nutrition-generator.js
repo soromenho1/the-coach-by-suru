@@ -60,12 +60,17 @@
   function portion(food,grams){
     return {display_name:food.name,quantity:grams,unit:'g',grams,...Object.fromEntries(keys.map(k=>[k,r(food[k]*grams/100)])),nutrition_source:source,source_checked_on:checked,source_version:`CoFID 2021 · ${food.id}`};
   }
-  function fit(meals,target){
-    const entries=meals.flatMap(m=>m.foods.map(food=>({food,grams:(food.min+food.max)/2})));
+  function fit(meals,target,guidance){
+    const entries=meals.flatMap((m,mealIndex)=>m.foods.map(food=>({food,mealIndex,grams:(food.min+food.max)/2})));
     const goals=[target.final_calorie_target,target.protein_g,target.fat_g,target.carbohydrate_g].map(Number);
     const weights=[4,2,1,1];
     const vectors=entries.map(e=>keys.map((k,i)=>e.food[k]/100/Math.max(goals[i],1)*Math.sqrt(weights[i])));
     const expected=goals.map((g,i)=>g/Math.max(g,1)*Math.sqrt(weights[i]));
+    if(guidance)guidance.forEach((g,i)=>{
+      const goal=(Number(g.carbs_min)+Number(g.carbs_max))/2, scale=4/Math.max(goal,1);
+      expected.push(goal*scale);
+      vectors.forEach((v,j)=>v.push(entries[j].mealIndex===i?entries[j].food.carbohydrate_g/100*scale:0));
+    });
     const actual=expected.map((_,i)=>entries.reduce((s,e,j)=>s+e.grams*vectors[j][i],0));
     // Bounded coordinate descent; nutrients are always derived from the selected foods.
     for(let pass=0;pass<500;pass++){
@@ -79,19 +84,29 @@
       if(change<0.01)break;
     }
     let index=0;
-    const out=meals.map(m=>({name:m.name,scheduled_time:null,notes:'Pesar a parte comestível no estado indicado. Preparar sem gordura adicional além da indicada. Rever porções e adequação ao aluno.',items:m.foods.map(f=>{const e=entries[index++];const step=f.group==='oil'?1:5;return portion(f,Math.max(f.min,Math.min(f.max,Math.round(e.grams/step)*step)));})}));
+    const out=meals.map((m,i)=>({name:m.name,scheduled_time:guidance?.[i].time||null,notes:'Pesar a parte comestível no estado indicado. Preparar sem gordura adicional além da indicada. Rever porções e adequação ao aluno.',items:m.foods.map(f=>{const e=entries[index++];const step=guidance?1:f.group==='oil'?1:5;return portion(f,Math.max(f.min,Math.min(f.max,Math.round(e.grams/step)*step)));})}));
     const total=N.totals({meals:out});
     const deviations=keys.map((k,i)=>Math.abs(total[k]-goals[i])/Math.max(goals[i],1));
-    return {meals:out,score:deviations.reduce((s,x)=>s+x,0),fits:deviations[0]<=0.10&&deviations.slice(1).every(x=>x<=0.20)};
+    const mealFits=!guidance||out.every((m,i)=>{const carbs=N.totals({meals:[m]}).carbohydrate_g;return carbs>=Number(guidance[i].carbs_min)&&carbs<=Number(guidance[i].carbs_max);});
+    return {meals:out,score:deviations.reduce((s,x)=>s+x,0)+(mealFits?0:100),fits:mealFits&&deviations[0]<=0.10&&deviations.slice(1).every(x=>x<=0.20)};
   }
   function generate({context,target,mealsPerDay,weekStart,trainerId}){
-    if(context?.review_status!=='READY')fail('Conclui a triagem. As restrições de saúde sinalizadas exigem revisão profissional antes da geração.');
+    if(!['READY','DIABETES_DRAFT'].includes(context?.review_status))fail('Conclui a triagem. As restrições de saúde sinalizadas exigem revisão profissional antes da geração.');
     N.bmr({...context.input,on:context.calculated_on});
     if(!target||!target.id||target.trainer_id!==trainerId||target.context_hash!==context.context_hash)fail('Seleciona uma meta atual, guardada por ti para este aluno. Recalcula a meta se os dados ou preferências mudaram.');
     for(const k of ['final_calorie_target','protein_g','fat_g','carbohydrate_g'])N.number(target[k],k,k==='final_calorie_target'?1:0,50000);
     N.date(weekStart);N.date(context.calculated_on);
     if(context.calculated_on<checked)fail('A data do servidor é anterior à versão do catálogo. Atualiza a página.');
     const n=N.number(mealsPerDay,'Refeições',3,6);if(!Number.isInteger(n))fail('Usa entre três e seis refeições na geração automática.');
+    const guidance=context.review_status==='DIABETES_DRAFT'?context.clinical?.data?.meals:null;
+    if(context.review_status==='DIABETES_DRAFT'){
+      if(!Array.isArray(guidance)||guidance.length!==n)fail('Usa o número de refeições definido na orientação clínica.');
+      guidance.forEach((g,i)=>{
+        if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(g.time)||(i&&g.time<=guidance[i-1].time))fail('Revê os horários da orientação clínica.');
+        const lo=N.number(g.carbs_min,'Hidratos mínimos',0,300),hi=N.number(g.carbs_max,'Hidratos máximos',0,300);
+        if(lo>hi)fail('Revê os limites de hidratos da orientação clínica.');
+      });
+    }
     const {foods,likes,matches}=candidates(context.profile);
     const groups=group=>foods.filter(f=>f.group===group);
     for(const group of ['starch','fruit','veg','oil'])if(!groups(group).length)fail('Não existem alimentos suficientes compatíveis com estas preferências. Preenche o plano manualmente.');
@@ -126,7 +141,7 @@
         if(n>=4)meals.push(light('Lanche da tarde'));
         meals.push(main('Jantar'));
         if(n===6)meals.push(light('Ceia'));
-        const result=fit(meals,target);if(!best||result.score<best.score)best=result;
+        const result=fit(meals,target,guidance);if(!best||result.score<best.score)best=result;
         if(result.fits)break;
       }
       if(!best.fits)fail(`Não consegui aproximar o dia ${d+1} das metas com porções adequadas e os alimentos disponíveis. Ajusta manualmente o plano ou revê a meta e o número de refeições.`);
