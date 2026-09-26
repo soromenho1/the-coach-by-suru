@@ -24,7 +24,7 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     if(el){el.textContent=text;el.setAttribute('role',error?'alert':'status');if(error)el.focus();}
   }
   function shell(content){
-    container.innerHTML='<style>#nutritionArea .row>*{min-width:0}#nutritionArea input,#nutritionArea select{font-size:16px;min-width:0}#nutritionArea fieldset{min-width:0;border:1px solid #dbe3ed;border-radius:12px;margin:12px 0;padding:12px}#nutritionArea button:disabled{opacity:.55}#nutritionArea .n-totals{line-height:1.6}#nutritionArea summary{padding:12px 0;cursor:pointer}</style>'+button('Voltar','back')+
+    container.innerHTML='<style>#nutritionArea .row>*{min-width:0}#nutritionArea small{overflow-wrap:anywhere}#nutritionArea input,#nutritionArea select{font-size:16px;min-width:0}#nutritionArea fieldset{min-width:0;border:1px solid #dbe3ed;border-radius:12px;margin:12px 0;padding:12px}#nutritionArea button:disabled{opacity:.55}#nutritionArea .n-totals{line-height:1.6}#nutritionArea summary{padding:12px 0;cursor:pointer}</style>'+button('Voltar','back')+
       `<p class="muted">${esc(studentName||account.full_name||'Aluno')}</p><h2>Nutrição</h2><div data-n-message role="status" aria-live="polite" tabindex="-1"></div>`+content;
   }
   function targetHtml(t){
@@ -69,6 +69,19 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     if(linked&&!entries.some(t=>t.id===linked.id))entries.push(linked);
     return [['','Selecionar meta'],...entries.map(t=>[t.id,`${t.effective_from} · ${fmt(t.final_calorie_target,'kcal')} · ${goals[t.goal_type]||t.goal_type}`])];
   }
+  function generationHelp(){
+    return `<details><summary>Alimentos e regras da geração</summary><p>A geração usa a meta guardada e as preferências atuais, para 3 a 6 refeições por dia. Escolhe alimentos de um catálogo limitado e ajusta porções; não gera dietas terapêuticas. Os valores são estimativas CoFID 2021. Revê os sete dias antes de guardar e aprovar.</p><p>Padrões: Variado, Vegetariano, Vegano ou Pescetariano. Nas preferências, usa nomes separados por vírgulas. Texto não reconhecido bloqueia a geração para não ignorar restrições.</p><p>${esc(window.CoachNutritionGenerator?.catalog.map(f=>f.name).join('; ')||'Catálogo indisponível. Atualiza a página.')}</p></details>`;
+  }
+  async function generateDays(targetId,mealsPerDay,weekStart){
+    if(!window.CoachNutritionGenerator)throw Error('Atualiza a página para carregar o gerador de alimentos.');
+    const fresh=await rpc('nutrition_context');
+    const {data:target,error}=await client.from('nutrition_targets').select('*').eq('id',targetId||'00000000-0000-0000-0000-000000000000').eq('student_id',studentId).eq('trainer_id',account.id).maybeSingle();
+    if(error)throw error;
+    if(!current())throw Error('Esta página já não está ativa.');
+    const days=window.CoachNutritionGenerator.generate({context:fresh,target,mealsPerDay,weekStart,trainerId:account.id});
+    ctx=fresh;
+    return {days,target};
+  }
   function totalsHtml(d,target){
     const t=N.totals(d);
     return `<p class="n-totals">Total: <b>${fmt(t.kcal,'kcal')}</b> · P ${fmt(t.protein_g,'g')} · G ${fmt(t.fat_g,'g')} · H ${fmt(t.carbohydrate_g,'g')}
@@ -86,7 +99,7 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
       <section class="card">${targetHtml(targets[0])}</section>${coach?profileHtml()+targetForm():''}
       <h3>Planos alimentares</h3>${plans.length?plans.map(readPlan).join(''):'<p>Ainda não existem planos alimentares disponíveis.</p>'}
       <div class="row">${offset?button('Mais recentes','previous'):''}${plans.length===20?button('Mais antigos','next'):''}</div>
-      ${coach?`<details class="card"><summary>Criar plano semanal</summary><form data-n-form="create">${input('name','Nome do plano','Plano alimentar','text','maxlength="150" required')}${input('week_start','Primeiro dia',today(),'date','required')}${input('objective','Objetivo do plano','','text','maxlength="1000"')}${input('meals_per_day','Número de refeições por dia',ctx.profile?.meals_per_day||4,'number','min="1" max="12" step="1" required')}${select('nutrition_target_id','Meta associada',targets.find(t=>t.trainer_id===account.id)?.id,targetOptions())}<button class="btn green" type="submit">Criar rascunho semanal</button></form></details>`:''}`);
+      ${coach?`<details class="card"><summary>Criar plano semanal</summary><form data-n-form="create">${input('name','Nome do plano','Plano alimentar','text','maxlength="150" required')}${input('week_start','Primeiro dia',today(),'date','required')}${input('objective','Objetivo do plano','','text','maxlength="1000"')}${input('meals_per_day','Número de refeições por dia',ctx.profile?.meals_per_day||4,'number','min="1" max="12" step="1" required')}${select('nutrition_target_id','Meta associada',targets.find(t=>t.trainer_id===account.id)?.id,targetOptions())}${select('fill_mode','Preenchimento','automatic',[['automatic','Gerar alimentos e quantidades para revisão'],['manual','Preencher manualmente']])}${generationHelp()}<button class="btn green" type="submit">Criar rascunho semanal</button></form></details>`:''}`);
   }
   function renderEditor(){
     const d=draft.days[dayIndex],target=targets.find(t=>t.id===draft.nutrition_target_id)||draft.target;
@@ -95,9 +108,10 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     shell(`<h3>Editar plano</h3><p data-n-dirty>${dirty?'Alterações por guardar.':'Sem alterações por guardar.'}</p><form data-n-form="edit">
       ${input('name','Nome do plano',draft.name,'text','data-plan-field="name" maxlength="150" required')}${input('objective','Objetivo do plano',draft.objective,'text','data-plan-field="objective" maxlength="1000"')}
       ${select('nutrition_target_id','Meta associada',draft.nutrition_target_id,targetOptions(draft.nutrition_target_id),'data-plan-field="nutrition_target_id"')}
+      ${button('Gerar alimentos para os sete dias','generate-foods')}${generationHelp()}
       ${select('day','Dia da semana',dayIndex,draft.days.map((day,i)=>[i,`Dia ${i+1} · ${day.day_date}`]),'data-n-day')}
       <div data-n-totals>${totalsHtml(d,target)}</div>
-      <p class="muted">Introduz os nutrientes para a quantidade indicada, já calculados a partir do rótulo ou da fonte consultada. A app soma estes valores; não os multiplica pela quantidade.</p>
+      <p class="muted">Nos alimentos gerados, alterar Quantidade recalcula os nutrientes enquanto o nome, a unidade em gramas e a fonte CoFID se mantiverem. Nos alimentos manuais, introduz os nutrientes para a quantidade indicada, calculados a partir da fonte consultada.</p>
       ${d.meals.map((m,i)=>`<fieldset><legend>Refeição ${i+1}</legend>${input('meal_name_'+i,'Nome da refeição',m.name,'text',mealField(i,'name')+' maxlength="150" required')}${input('meal_time_'+i,'Horário (opcional)',m.scheduled_time?.slice(0,5)||'','time',mealField(i,'scheduled_time'))}${area('meal_notes_'+i,'Notas para o aluno',m.notes,mealField(i,'notes')+' maxlength="2000"')}
         ${m.items.map((x,j)=>`<fieldset><legend>Alimento ${j+1}</legend>${input('food_'+i+'_'+j,'Alimento',x.display_name,'text',itemField(i,j,'display_name')+' maxlength="200" required')}
           <div class="row">${input('quantity_'+i+'_'+j,'Quantidade',x.quantity,'text',itemField(i,j,'quantity')+' inputmode="decimal" required')}${input('unit_'+i+'_'+j,'Unidade',x.unit,'text',itemField(i,j,'unit')+' maxlength="30" required')}</div>
@@ -155,7 +169,20 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     if(!draft||busy||!current())return;
     const el=event.target,ds=el.dataset;
     if(ds.planField){draft[ds.planField]=el.value;markDirty();}
-    if(ds.field){const meal=draft.days[dayIndex].meals[Number(ds.meal)];const obj=ds.item===undefined?meal:meal.items[Number(ds.item)];obj[ds.field]=el.value;markDirty();}
+    if(ds.field){
+      const meal=draft.days[dayIndex].meals[Number(ds.meal)];const obj=ds.item===undefined?meal:meal.items[Number(ds.item)];obj[ds.field]=el.value;
+      const G=window.CoachNutritionGenerator;
+      const f=G?.catalog.find(f=>obj.source_version===`CoFID 2021 · ${f.id}`&&obj.display_name===f.name&&obj.nutrition_source===G.source&&obj.unit==='g');
+      if(ds.field==='quantity'&&f){
+        try{
+          const item=G.portion(f,N.number(el.value,'Quantidade',0.001,100000));Object.assign(obj,item);
+          for(const field of ['grams','kcal','protein_g','fat_g','carbohydrate_g']){
+            const input=container.querySelector(`[data-meal="${ds.meal}"][data-item="${ds.item}"][data-field="${field}"]`);if(input)input.value=obj[field];
+          }
+        }catch{/* Preserve partially typed quantities; save validates them. */}
+      }
+      markDirty();
+    }
     const totals=container.querySelector('[data-n-totals]');if(totals)totals.innerHTML=totalsHtml(draft.days[dayIndex],targets.find(t=>t.id===draft.nutrition_target_id));
   });
   container.addEventListener('change',event=>{
@@ -174,6 +201,14 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     }
     if(a==='edit'){draft=copy(p);dayIndex=0;dirty=false;return renderEditor();}
     if(a==='close-editor'){if(dirty&&!window.confirm('Descartar alterações por guardar?'))return;draft=null;dirty=false;return render();}
+    if(a==='generate-foods'&&draft)return guarded(async()=>{
+      const count=draft.days[0]?.meals.length;
+      if(draft.days.some(day=>day.meals.length!==count))throw Error('Para gerar, usa o mesmo número de refeições nos sete dias.');
+      if(draft.days.some(day=>day.meals.some(meal=>meal.items.length))&&!window.confirm('Substituir os alimentos, horários e notas dos sete dias por uma nova proposta? Só será gravada quando carregares em Guardar plano.'))return;
+      const generated=await generateDays(draft.nutrition_target_id,count,draft.week_start);
+      draft.days=generated.days;draft.target=generated.target;dayIndex=0;dirty=true;renderEditor();
+      message('Alimentos gerados para os sete dias. Revê as quantidades e os totais e carrega em Guardar plano. Ainda não foram gravados.');
+    });
     if(a==='review'||a==='approve')return guarded(async()=>{
       if(a==='approve'&&!window.confirm('Confirmas que reveste alimentos, quantidades, fontes e totais dos sete dias? O plano ficará disponível ao aluno.'))return;
       await rpc(a==='review'?'nutrition_review_meal_plan':'nutrition_approve_meal_plan',{id:p.id,revision:p.revision});await load();message(a==='review'?'Plano completo enviado para revisão.':'Plano aprovado e disponível ao aluno.');
@@ -201,7 +236,14 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
         if((t.calorie_delta||v.goal_type==='custom')&&v.override_reason.trim().length<3)throw Error('Justifica o ajuste da meta calórica.');
         await rpc('nutrition_save_target',request('target',{...v,context_hash:ctx.context_hash}));delete requests.target;
       }else if(kind==='create'){
-        N.date(v.week_start);await rpc('nutrition_create_meal_plan',request('create',v));delete requests.create;offset=0;
+        N.date(v.week_start);
+        const automatic=v.fill_mode==='automatic';delete v.fill_mode;
+        const generated=automatic?await generateDays(v.nutrition_target_id,v.meals_per_day,v.week_start):null;
+        const created=await rpc('nutrition_create_meal_plan',request('create',v));delete requests.create;offset=0;
+        if(generated){
+          draft={...created,days:generated.days,target:generated.target};dayIndex=0;dirty=true;renderEditor();
+          message('Rascunho criado. Os alimentos dos sete dias estão prontos para revisão, mas ainda não foram gravados. Carrega em Guardar plano para os guardar.');return;
+        }
       }else if(kind==='edit'){
         await rpc('nutrition_edit_meal_plan',N.planPayload(draft,today()));draft=null;dirty=false;
       }
