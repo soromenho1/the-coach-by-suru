@@ -148,5 +148,5 @@ window.mountCoachWorkouts = function(container, {client, account, studentId, val
     }catch(error){if(live()){status.setAttribute('role','alert');status.textContent=W.message(error,'guardar o registo');status.focus();}}
     finally{if(kind==='finish')finishing=false;busy.delete(f);submit.disabled=false;}
   });
-  show(student&&initialRoute&&['workout','session'].includes(initialRoute.type)?initialRoute:{type:'plans'});
+  show(initialRoute&&(initialRoute.type==='workout'||(student&&initialRoute.type==='session'))?initialRoute:{type:'plans'});
 };

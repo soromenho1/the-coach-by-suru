@@ -67,11 +67,13 @@
         '<div class="card notice"><b>Acompanhamento</b><p class="muted">Consulta os alunos associados à tua conta.</p></div>' + button('Gerir alunos', 'list') + button('Terminar sessão', 'logout', 'light'));
     } else {
       selected = account;
-      page(head(`Olá, ${name(account)}`) + '<p class="muted">Disciplina hoje, resultados amanhã. <span class="student-area-label">Área do aluno</span></p>' +
-        '<section id="studentDashboard"></section>' + button('Terminar sessão', 'logout', 'light'));
-      const context=currentContext();
-      window.mountStudentDashboard(root.querySelector('#studentDashboard'),{client:sb,account:context.actor,valid:context.valid,open:modulePage,openTraining:route=>modulePage('plan',route)});
+      studentPanel();
     }
+  }
+  function studentPanel(initialScreen='home') {
+    page('<section id="studentDashboard"></section>');
+    const context=currentContext();
+    window.mountStudentDashboard(root.querySelector('#studentDashboard'),{client:sb,account:context.actor,studentId:context.studentId,studentName:name(selected),valid:context.valid,initialScreen,back:list,open:action=>action==='logout'?logout():modulePage(action),openTraining:route=>modulePage('plan',route)});
   }
   function list() {
     if (!coach()) return;
@@ -83,8 +85,7 @@
     if (!coach()) return;
     selected = students.find(s => s.id === id);
     if (!selected) return list();
-    page(head(name(selected), 'list') + '<span class="tag">ALUNO ASSOCIADO</span>' + statsPlaceholder() + modules() + button('Plano de treino', 'plan'));
-    refreshStats();
+    studentPanel();
   }
   const moduleItems = [
     ['🍽️', 'Nutrição', 'Metas, macros e hidratação', 'nutrition'],

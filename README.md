@@ -159,3 +159,9 @@ A versão visível mantém-se v0.8; sugere-se v0.9 para uma publicação futura 
 Testes novos: `node --test tests/anamnesis.test.cjs` e `node tests/browser-anamnesis.cjs` (Playwright, Chromium e variável `COACH_PLAYWRIGHT` quando instalado fora do projeto). A suite anterior deve continuar a passar integralmente.
 
 A validação numérica da Anamnese aceita unidades humanas inequívocas (`58 kg`, `5 horas`, `4 vezes/semana`, `2,5 L`, `5/10`) e guarda números normalizados. Texto ambíguo continua a ser rejeitado com indicação específica, sem apagar o valor escrito.
+
+## Cinco ecrãs do aluno — atualização de 27/09/2026
+
+O início, Água, Nutrição, Plano de Treino e Cardio têm páginas próprias com o estilo da referência: fundo creme, fotografia, cartões e navegação inferior. A ficha acessível pelo treinador também abre este painel em consulta; as ferramentas de gestão continuam disponíveis em Mais e em Ver plano. O consumo privado de hidratação só aparece na conta do aluno, sem representar dados inacessíveis como zero. As fotografias são ilustrativas e os alimentos, quantidades, metas e registos vêm dos dados existentes. Não são inventados objetivos de cardio ou datas de treino.
+
+Verificação: testes automáticos e percursos de treinador/aluno isolados em 390 e 1440 px, incluindo abertura direta do index.html local, registos de água/cardio, navegação pelos cinco ecrãs e início/retoma de treino. Nenhum registo de teste é enviado à base de produção.
