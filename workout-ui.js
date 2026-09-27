@@ -1,5 +1,5 @@
 /* Isolated workout screens mounted inside the existing authenticated application. */
-window.mountCoachWorkouts = function(container, {client, account, studentId, valid, back}) {
+window.mountCoachWorkouts = function(container, {client, account, studentId, valid, back, initialRoute}) {
   const W=window.CoachWorkouts,A=window.CoachAssessments;
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const coach=W.isCoach(account),student=account.role==='student'&&account.id===studentId;
@@ -148,5 +148,5 @@ window.mountCoachWorkouts = function(container, {client, account, studentId, val
     }catch(error){if(live()){status.setAttribute('role','alert');status.textContent=W.message(error,'guardar o registo');status.focus();}}
     finally{if(kind==='finish')finishing=false;busy.delete(f);submit.disabled=false;}
   });
-  show({type:'plans'});
+  show(student&&initialRoute&&['workout','session'].includes(initialRoute.type)?initialRoute:{type:'plans'});
 };

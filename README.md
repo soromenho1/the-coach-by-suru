@@ -78,6 +78,19 @@ Referências: [INSERT Supabase](https://supabase.com/docs/reference/javascript/i
 - As séries prescritas são um objetivo. O aluno pode terminar com menos, todas ou mais séries. Séries extra usam as mesmas colunas de set_logs, mantêm numeração inteira e não alteram registos persistidos.
 - «Terminar treino» confirma quando existem séries incompletas, guarda apenas rascunhos válidos e deixa a sessão concluída mesmo sem séries ou sem exercícios disponíveis. Falhas de RLS mantêm a sessão aberta para repetir.
 
+## Dashboard do aluno — 27/09/2026
+
+O ecrã inicial do aluno segue a referência visual fornecida: fundo claro, faixa escura, quatro cartões em duas colunas, Resumo do dia, sequência de próximos treinos e navegação inferior. O CSS é exclusivo deste ecrã; a área do treinador e os restantes módulos mantêm o aspeto anterior.
+
+- **Água:** objetivo da meta nutricional visível, consumo diário e registos de 250 ml / 500 ml / 1 L em `hydration_logs`. A leitura inclui registos antigos de `water_logs` no dia local, sem duplicar UUIDs iguais. Não inventa um objetivo quando não existe meta.
+- **Nutrição:** calorias e macros **planeados** nas refeições do dia de um plano aprovado; abre o módulo existente. Não apresenta estes valores como ingestão confirmada.
+- **Plano de treino:** primeiro treino da sequência do plano ativo ou sessão por terminar. Iniciar/retomar usa o serviço de treinos existente. Os próximos treinos seguem a ordem do plano, sem datas ou durações inventadas.
+- **Cardio:** minutos registados no dia e formulário de atividade/duração no próprio Dashboard, guardado na tabela `cardio_logs` existente.
+
+O resumo apresenta água, kcal planeadas, treinos concluídos e minutos de cardio. Anamnese, avaliações, evolução e check-in continuam acessíveis em Mais acompanhamento. As gravações pertencem ao aluno autenticado; repetem o mesmo UUID após falha para evitar duplicados. Erros de leitura não são apresentados como zero e respostas de uma página abandonada não a reabrem.
+
+Verificação: 153 testes automáticos aprovados, incluindo cinco novos testes de dados/permissões/repetição. `tests/browser-dashboard.cjs` testa login de treinador e aluno, navegação, registos, recarregamento, início/retoma, falha parcial e saída durante leitura a 390 e 1440 px. Usa perfis fictícios e pedidos Supabase intercetados: não foram criados registos de teste em contas reais. Não exige migração da base de dados.
+
 ## Nutrição — metas e editor semanal
 
 - O contexto usa data de nascimento e sexo da anamnese; peso e altura vêm da avaliação mais recente com esse valor, ou da anamnese quando não existe avaliação. Avaliações futuras são ignoradas. A origem fica guardada em cada versão da meta. Os campos demográficos legados de `nutrition_profiles` não são usados nem expostos.

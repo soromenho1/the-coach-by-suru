@@ -67,9 +67,10 @@
         '<div class="card notice"><b>Acompanhamento</b><p class="muted">Consulta os alunos associados à tua conta.</p></div>' + button('Gerir alunos', 'list') + button('Terminar sessão', 'logout', 'light'));
     } else {
       selected = account;
-      page(head(`Olá, ${name(account)} 👋`) + '<p class="muted">Área do aluno</p>' +
-        statsPlaceholder() + '<div class="card"><span class="tag">TREINO DE HOJE</span><h2 style="margin-top:12px">Plano de treino</h2><p class="muted">Escolhe o treino que vais realizar hoje.</p>' + button('Abrir planos e treinos', 'plan', 'green') + '</div>' + modules() + button('Terminar sessão', 'logout', 'light'));
-      refreshStats();
+      page(head(`Olá, ${name(account)}`) + '<p class="muted">Disciplina hoje, resultados amanhã. <span class="student-area-label">Área do aluno</span></p>' +
+        '<section id="studentDashboard"></section>' + button('Terminar sessão', 'logout', 'light'));
+      const context=currentContext();
+      window.mountStudentDashboard(root.querySelector('#studentDashboard'),{client:sb,account:context.actor,valid:context.valid,open:modulePage,openTraining:route=>modulePage('plan',route)});
     }
   }
   function list() {
@@ -97,7 +98,7 @@
   function modules() {
     return '<h3 class="section">Acompanhamento</h3>' + moduleItems.map(m => `<button type="button" class="card module" style="width:100%;border:0;text-align:left;font:inherit;color:inherit" data-action="${m[3]}"><span class="ico">${m[0]}</span><div><b>${m[1]}</b><small>${m[2]}</small></div><span>›</span></button>`).join('');
   }
-  function modulePage(action) {
+  function modulePage(action,initialRoute) {
     if (!account || !selected || (coach() ? !students.some(s => s.id === selected.id) : selected.id !== account.id)) return;
     if (action === 'evals' || action === 'progress') return assessmentPage(action);
     if (action === 'anam') {
@@ -115,7 +116,7 @@
     if (action === 'plan') {
       page(head('Plano de treino') + '<section id="workoutArea" style="overflow-wrap:anywhere"></section>');
       const context = currentContext();
-      window.mountCoachWorkouts(root.querySelector('#workoutArea'), {client: sb, account: context.actor, studentId: context.studentId, valid: context.valid, back: () => coach() ? profile(context.studentId) : dashboard()});
+      window.mountCoachWorkouts(root.querySelector('#workoutArea'), {client: sb, account: context.actor, studentId: context.studentId, valid: context.valid, back: () => coach() ? profile(context.studentId) : dashboard(),initialRoute});
       return;
     }
     const title = action === 'plan' ? 'Plano de treino' : moduleItems.find(m => m[3] === action)?.[1];
