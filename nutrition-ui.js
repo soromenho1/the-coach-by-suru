@@ -124,9 +124,20 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     if(draft)return renderEditor();
     shell(`<div class="card notice"><p>Estimativas nutricionais para revisão pelo treinador. Situações clínicas exigem acompanhamento profissional.</p></div>${reviewHtml()}
       <section class="card">${targetHtml(targets[0])}</section>${coach?profileHtml()+clinicalHtml()+targetForm():''}
-      <h3>Planos alimentares</h3>${plans.length?plans.map(readPlan).join(''):'<p>Ainda não existem planos alimentares disponíveis.</p>'}
+      <h3>Planos alimentares</h3>${coach?'<p class="muted">No editor: pesquisa USDA por alimento e preparação, ou adiciona um produto pelo rótulo. PortFIR aguarda importação da tabela oficial. A geração automática mantém o catálogo CoFID validado.</p>':''}${plans.length?plans.map(readPlan).join(''):'<p>Ainda não existem planos alimentares disponíveis.</p>'}
       <div class="row">${offset?button('Mais recentes','previous'):''}${plans.length===20?button('Mais antigos','next'):''}</div>
       ${coach?`<details class="card"><summary>Criar plano semanal</summary><form data-n-form="create">${input('name','Nome do plano','Plano alimentar','text','maxlength="150" required')}${input('week_start','Primeiro dia',today(),'date','required')}${input('objective','Objetivo do plano','','text','maxlength="1000"')}${input('meals_per_day','Número de refeições por dia',ctx.profile?.meals_per_day||4,'number','min="1" max="12" step="1" required')}${select('nutrition_target_id','Meta associada',targets.find(t=>t.trainer_id===account.id)?.id,targetOptions())}${select('fill_mode','Preenchimento','automatic',[['automatic','Gerar alimentos e quantidades para revisão'],['manual','Preencher manualmente']])}${generationHelp()}<button class="btn green" type="submit">Criar rascunho semanal</button></form></details>`:''}`);
+  }
+  function catalogPicker(i){
+    const C=window.CoachFoodCatalog;
+    if(!C)return '<p>Catálogo indisponível. Atualiza a página.</p>';
+    return `<details class="card"><summary>Procurar alimento no catálogo</summary><p>${C.status.count.toLocaleString('pt-PT')} alimentos USDA · valores por 100 g de parte comestível.</p><p class="muted">PortFIR: importação pendente do ficheiro oficial. USDA mantém os nomes originais em inglês; podes pesquisar também termos comuns em português, como frango, arroz ou leite. Confirma se o alimento está cru ou cozinhado. Os hidratos USDA são totais e incluem fibra.</p><label>Pesquisar alimento<input class="input" type="search" data-catalog-search="${i}" placeholder="Ex.: arroz cozido / rice cooked" autocomplete="off"></label><div data-catalog-results="${i}" aria-live="polite"></div></details>
+    <details class="card" data-label-panel="${i}"><summary>Adicionar produto pelo rótulo</summary><p>Transcreve os valores por <b>100 g</b>. Para rótulos por 100 ml, usa o preenchimento manual em ml, sem converter ml em gramas.</p>${input('label_name_'+i,'Nome do produto','','text','data-label="name" maxlength="200"')}${input('label_brand_'+i,'Marca / produto exato','','text','data-label="brand" maxlength="200"')}${input('label_checked_'+i,'Data de consulta do rótulo',today(),'date','data-label="checked"')}${[['kcal','Calorias por 100 g'],['protein_g','Proteína por 100 g'],['fat_g','Gordura por 100 g'],['carbohydrate_g','Hidratos por 100 g']].map(([k,l])=>input('label_'+k+'_'+i,l,'','text',`data-label="${k}" inputmode="decimal"`)).join('')}${button('Adicionar rótulo à refeição','catalog-label',`data-meal="${i}"`)}</details>`;
+  }
+  function catalogResults(query,i){
+    const C=window.CoachFoodCatalog,results=C?.search(query)||[];
+    const el=container.querySelector(`[data-catalog-results="${i}"]`);if(!el)return;
+    el.innerHTML=query.trim().length<2?'<p>Escreve pelo menos duas letras.</p>':results.length?results.map(f=>`<div class="card"><b>${esc(f.name)}</b><p>${fmt(f.kcal,'kcal')} · P ${fmt(f.protein_g,'g')} · G ${fmt(f.fat_g,'g')} · H totais ${fmt(f.carbohydrate_g,'g')} / 100 g</p><small>${esc(f.version)}</small>${button('Adicionar 100 g','catalog-add',`data-meal="${i}" data-food-id="${esc(f.id)}"`)}</div>`).join('')+'<p>Mostramos até 20 resultados. Especifica alimento e preparação para refinar.</p>':'<p>Sem resultados. Experimenta o nome em inglês ou introduz os dados de um rótulo confirmado.</p>';
   }
   function renderEditor(){
     const d=draft.days[dayIndex],target=targets.find(t=>t.id===draft.nutrition_target_id)||draft.target;
@@ -138,9 +149,9 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
       ${button('Gerar alimentos para os sete dias','generate-foods')}${generationHelp()}
       ${select('day','Dia da semana',dayIndex,draft.days.map((day,i)=>[i,`Dia ${i+1} · ${day.day_date}`]),'data-n-day')}
       <div data-n-totals>${totalsHtml(d,target)}</div>
-      <p class="muted">Nos alimentos gerados, alterar Quantidade recalcula os nutrientes enquanto o nome, a unidade em gramas e a fonte CoFID se mantiverem. Nos alimentos manuais, introduz os nutrientes para a quantidade indicada, calculados a partir da fonte consultada.</p>
+      <p class="muted">Nos alimentos do catálogo e rótulos por 100 g, alterar Quantidade recalcula os nutrientes mantendo a fonte. Valores USDA usam hidratos totais (incluem fibra). Alterar nutrientes manualmente desliga o recálculo desse alimento. Nos alimentos manuais, introduz os nutrientes para a quantidade indicada, calculados a partir da fonte consultada.</p>
       ${d.meals.map((m,i)=>`<fieldset><legend>Refeição ${i+1}</legend><p data-n-meal-total="${i}">${mealCarbsHtml(m,i)}</p>${input('meal_name_'+i,'Nome da refeição',m.name,'text',mealField(i,'name')+' maxlength="150" required')}${input('meal_time_'+i,clinicalRequired()?'Horário conforme orientação':'Horário (opcional)',m.scheduled_time?.slice(0,5)||'','time',mealField(i,'scheduled_time'))}${area('meal_notes_'+i,'Notas para o aluno',m.notes,mealField(i,'notes')+' maxlength="2000"')}
-        ${m.items.map((x,j)=>`<fieldset><legend>Alimento ${j+1}</legend>${input('food_'+i+'_'+j,'Alimento',x.display_name,'text',itemField(i,j,'display_name')+' maxlength="200" required')}
+        ${catalogPicker(i)}${m.items.map((x,j)=>`<fieldset><legend>Alimento ${j+1}</legend>${input('food_'+i+'_'+j,'Alimento',x.display_name,'text',itemField(i,j,'display_name')+' maxlength="200" required')}
           <div class="row">${input('quantity_'+i+'_'+j,'Quantidade',x.quantity,'text',itemField(i,j,'quantity')+' inputmode="decimal" required')}${input('unit_'+i+'_'+j,'Unidade',x.unit,'text',itemField(i,j,'unit')+' maxlength="30" required')}</div>
           ${input('grams_'+i+'_'+j,'Peso em gramas (opcional)',x.grams??'','text',itemField(i,j,'grams')+' inputmode="decimal"')}
           <div class="row">${input('kcal_'+i+'_'+j,'Calorias (kcal)',x.kcal??'','text',itemField(i,j,'kcal')+' inputmode="decimal" required')}${input('protein_'+i+'_'+j,'Proteína (g)',x.protein_g??'','text',itemField(i,j,'protein_g')+' inputmode="decimal" required')}</div>
@@ -195,19 +206,22 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
   container.addEventListener('input',event=>{
     if(!draft||busy||!current())return;
     const el=event.target,ds=el.dataset;
+    if(ds.catalogSearch!==undefined){catalogResults(el.value,Number(ds.catalogSearch));return;}
     if(ds.planField){draft[ds.planField]=el.value;markDirty();}
     if(ds.field){
       const meal=draft.days[dayIndex].meals[Number(ds.meal)];const obj=ds.item===undefined?meal:meal.items[Number(ds.item)];obj[ds.field]=el.value;
       const G=window.CoachNutritionGenerator;
-      const f=G?.catalog.find(f=>obj.source_version===`CoFID 2021 · ${f.id}`&&obj.display_name===f.name&&obj.nutrition_source===G.source&&obj.unit==='g');
+      const C=window.CoachFoodCatalog,external=C?.match(obj)||C?.matchLabel(obj);
+      const f=external||G?.catalog.find(f=>obj.source_version===`CoFID 2021 · ${f.id}`&&obj.display_name===f.name&&obj.nutrition_source===G.source&&obj.unit==='g');
       if(ds.field==='quantity'&&f){
         try{
-          const item=G.portion(f,N.number(el.value,'Quantidade',0.001,100000));Object.assign(obj,item);
+          const item=(external?C:G).portion(f,N.number(el.value,'Quantidade',0.001,100000));Object.assign(obj,item);
           for(const field of ['grams','kcal','protein_g','fat_g','carbohydrate_g']){
             const input=container.querySelector(`[data-meal="${ds.meal}"][data-item="${ds.item}"][data-field="${field}"]`);if(input)input.value=obj[field];
           }
         }catch{/* Preserve partially typed quantities; save validates them. */}
       }
+      if(['kcal','protein_g','fat_g','carbohydrate_g'].includes(ds.field)&&f){obj.source_version='';const version=container.querySelector(`[data-meal="${ds.meal}"][data-item="${ds.item}"][data-field="source_version"]`);if(version)version.value='';}
       markDirty();
     }
     const totals=container.querySelector('[data-n-totals]');if(totals)totals.innerHTML=totalsHtml(draft.days[dayIndex],targets.find(t=>t.id===draft.nutrition_target_id));
@@ -251,6 +265,13 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     });
     if(!draft)return;
     const d=draft.days[dayIndex];
+    if(a==='catalog-add'||a==='catalog-label'){
+      try{if(!d.meals[i]||d.meals[i].items.length>=30)throw Error('Cada refeição permite até 30 alimentos.');const C=window.CoachFoodCatalog;let food;
+        if(a==='catalog-add')food=C.get(el.dataset.foodId);
+        else {const panel=container.querySelector(`[data-label-panel="${i}"]`);const values=Object.fromEntries([...panel.querySelectorAll('[data-label]')].map(e=>[e.dataset.label,e.value]));food=C.label(values);}
+        d.meals[i].items.push(C.portion(food,100));markDirty();renderEditor();message('Alimento adicionado ao rascunho. Ajusta a quantidade e guarda o plano.');
+      }catch(e){message(e.message,true);}return;
+    }
     if(a==='add-meal'&&d.meals.length<12)d.meals.push({name:'Refeição '+(d.meals.length+1),scheduled_time:null,notes:'',items:[]});
     else if(a==='remove-meal'&&d.meals.length>1)d.meals.splice(i,1);
     else if(a==='add-item'&&d.meals[i].items.length<30)d.meals[i].items.push({display_name:'',quantity:'',unit:'g',grams:'',kcal:'',protein_g:'',fat_g:'',carbohydrate_g:'',nutrition_source:'',source_checked_on:today(),source_version:''});
