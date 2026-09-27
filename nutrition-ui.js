@@ -31,7 +31,7 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
   }
   function targetHtml(t){
     if(!t)return '<p>Ainda não existem metas nutricionais guardadas.</p>';
-    return `<h3>${esc(goals[t.goal_type]||t.goal_type)}</h3>${t.calculation_input_snapshot?.clinical_review_required?'<p class="notice">Estimativa associada a um plano com revisão clínica obrigatória.</p>':''}<p>${fmt(t.final_calorie_target,'kcal')} · Água: ${fmt(t.final_water_ml??t.calculated_water_ml,'ml')}</p>
+    return `<h3>${esc(goals[t.goal_type]||t.goal_type)}</h3>${t.calculation_input_snapshot?.clinical_review_required?'<p class="notice">Estimativa associada a um plano com revisão obrigatória do professor.</p>':''}<p>${fmt(t.final_calorie_target,'kcal')} · Água: ${fmt(t.final_water_ml??t.calculated_water_ml,'ml')}</p>
       <p>Proteína ${fmt(t.protein_g,'g')} · Gordura ${fmt(t.fat_g,'g')} · Hidratos ${fmt(t.carbohydrate_g,'g')}</p>
       <details><summary>Ver cálculo e origem</summary><p>TMB: ${fmt(t.bmr_kcal,'kcal')} · Fator: ${fmt(t.activity_factor)} · TDEE: ${fmt(t.tdee_kcal,'kcal')}</p>
       <p>Meta calculada: ${fmt(t.calculated_calorie_target,'kcal')} · Ajuste: ${fmt(t.final_calorie_target-t.calculated_calorie_target,'kcal')}</p>
@@ -40,7 +40,7 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
   }
   function reviewHtml(){
     if(ctx.review_status==='READY')return '';
-    if(ctx.review_status==='DIABETES_DRAFT')return `<div class="card notice"><b>Diabetes — revisão clínica obrigatória</b><p>${coach?'Podes preparar alimentos e quantidades segundo a orientação registada. Os rascunhos só ficam disponíveis ao aluno após aprovação por um nutricionista autorizado.':'Só são apresentados planos aprovados pelo nutricionista e correspondentes à informação clínica atual.'} Não alterar medicação ou doses de insulina com base numa proposta da app.</p></div>`;
+    if(ctx.review_status==='DIABETES_DRAFT')return `<div class="card notice"><b>Diabetes — revisão obrigatória do professor</b><p>${coach?'Podes preparar alimentos e quantidades segundo a orientação registada. Os rascunhos só ficam disponíveis ao aluno após aprovação pelo professor associado ao aluno.':'Só são apresentados planos aprovados pelo professor e correspondentes à informação clínica atual.'} Não alterar medicação ou doses de insulina com base numa proposta da app.</p></div>`;
     return `<div class="card notice"><b>${ctx.review_status==='INCOMPLETE'?'Completar informação':'Requer revisão profissional'}</b>
       <p>${esc([...(ctx.missing||[]),...(ctx.reasons||[])].join(' · '))}</p><p>O cálculo automático e a aprovação estão bloqueados enquanto esta situação estiver pendente. As respostas devem refletir a situação atual do aluno.</p></div>`;
   }
@@ -49,7 +49,7 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     const d=ctx.clinical?.data||{},meals=d.meals||[];
     const yesNo=[['','Selecionar'],['yes','Sim'],['no','Não']];
     return `<details class="card" ${!ctx.clinical?'open':''}><summary>Diabetes: informação para a revisão clínica</summary><form data-n-form="clinical">
-      <p>Regista respostas confirmadas com o aluno e a orientação alimentar do profissional de saúde. Se não existir orientação sobre horários e hidratos, pede-a ao nutricionista antes de gerar. Estes dados não autorizam alterações de medicação.</p>
+      <p>Regista respostas confirmadas com o aluno e a orientação alimentar do profissional de saúde. Se não existir orientação sobre horários e hidratos, completa essa orientação antes de gerar. Estes dados não autorizam alterações de medicação.</p>
       ${select('diabetes_type','Tipo de diabetes',d.diabetes_type,[['','Selecionar'],['type1','Tipo 1'],['type2','Tipo 2'],['other','Outro tipo confirmado']],'required')}
       ${area('medication','Medicação atual e informação relevante (ou “sem medicação”, se confirmado)',d.medication,'required maxlength="4000"')}
       ${select('insulin_or_hypo_medication','Usa insulina ou medicação com risco de hipoglicemia?',d.insulin_or_hypo_medication,yesNo,'required')}
@@ -117,7 +117,7 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
   function readPlan(p){
     return `<article class="card"><span class="tag">${esc(states[p.status]||p.status)}</span><h3 style="margin-top:12px">${esc(p.name)}</h3><p>${esc(p.week_start)} → ${esc(p.week_end)} · ${esc(p.objective)}</p>
       ${(p.days||[]).map(d=>`<details><summary>Dia ${d.position} · ${esc(d.day_date)}</summary>${totalsHtml(d,p.target)}${(d.meals||[]).map(m=>`<h4>${esc(m.name)} ${esc(m.scheduled_time?.slice(0,5)||'')}</h4><p><b>Hidratos da refeição: ${fmt(N.totals({meals:[m]}).carbohydrate_g,'g')}</b></p><p>${esc(m.notes)}</p>${m.items?.length?m.items.map(x=>`<div class="card"><b>${esc(x.display_name)}</b><p>${fmt(x.quantity)} ${esc(x.unit)}${x.grams?` · ${fmt(x.grams,'g')}`:''}</p><p>${fmt(x.kcal,'kcal')} · P ${fmt(x.protein_g,'g')} · G ${fmt(x.fat_g,'g')} · H ${fmt(x.carbohydrate_g,'g')}</p><small>Fonte: ${esc(x.nutrition_source)} · ${esc(x.source_checked_on)} ${esc(x.source_version)}</small></div>`).join(''):'<p>Sem alimentos.</p>'}`).join('')}</details>`).join('')}
-      ${coach&&(p.trainer_id===account.id||ctx.can_clinical_review)&&['draft','pending_review'].includes(p.status)?button('Editar plano','edit',`data-plan="${esc(p.id)}"`)+button(p.status==='draft'?'Enviar para revisão':clinicalRequired()?'Aprovar revisão clínica e disponibilizar':'Aprovar e disponibilizar ao aluno',p.status==='draft'?'review':'approve',`data-plan="${esc(p.id)}" ${!canPrepare()||(p.status==='pending_review'&&clinicalRequired()&&!ctx.can_clinical_review)?'disabled':''}`,'green')+(p.status==='pending_review'&&clinicalRequired()&&!ctx.can_clinical_review?'<p>Aguarda aprovação de um nutricionista autorizado e associado ao aluno.</p>':''):''}</article>`;
+      ${coach&&(p.trainer_id===account.id||ctx.can_clinical_review)&&['draft','pending_review'].includes(p.status)?button('Editar plano','edit',`data-plan="${esc(p.id)}"`)+button(p.status==='draft'?'Enviar para revisão':clinicalRequired()?'Autorizar plano e disponibilizar ao aluno':'Aprovar e disponibilizar ao aluno',p.status==='draft'?'review':'approve',`data-plan="${esc(p.id)}" ${!canPrepare()||(p.status==='pending_review'&&clinicalRequired()&&!ctx.can_clinical_review)?'disabled':''}`,'green')+(p.status==='pending_review'&&clinicalRequired()&&!ctx.can_clinical_review?'<p>Aguarda aprovação de um professor associado ao aluno.</p>':''):''}</article>`;
   }
   function render(){
     if(!current())return;
@@ -241,10 +241,10 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     if(a==='review'||a==='approve')return guarded(async()=>{
       let clinical_note;
       if(a==='approve'&&clinicalRequired()){
-        if(!ctx.can_clinical_review)throw Error('A aprovação exige um nutricionista autorizado.');
-        clinical_note=window.prompt('Regista a revisão clínica: adequação dos sete dias, horários e hidratos à medicação, risco de hipoglicemia e rotina do aluno.');
+        if(!ctx.can_clinical_review)throw Error('A aprovação exige um professor com associação ativa ao aluno.');
+        clinical_note=window.prompt('Regista a revisão do professor: adequação dos sete dias, horários e hidratos à medicação, risco de hipoglicemia e rotina do aluno.');
         if(clinical_note===null)return;
-        if(clinical_note.trim().length<10)throw Error('Descreve a revisão clínica antes de aprovar.');
+        if(clinical_note.trim().length<10)throw Error('Descreve a revisão antes de aprovar.');
       }
       if(a==='approve'&&!window.confirm('Confirmas que reveste alimentos, quantidades, fontes e totais dos sete dias? O plano ficará disponível ao aluno.'))return;
       await rpc(a==='review'?'nutrition_review_meal_plan':'nutrition_approve_meal_plan',{id:p.id,revision:p.revision,...(clinical_note?{clinical_note,clinical_confirmation:true}:{})});await load();message(a==='review'?'Plano completo enviado para revisão.':'Plano aprovado e disponível ao aluno.');
