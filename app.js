@@ -5,10 +5,10 @@
   const root = document.querySelector('#app');
   const assessments = window.CoachAssessments;
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const brand = () => '<div class="brand">THE COACH<small>by Suru · v0.8</small></div>';
+  const brand = () => '<div class="brand">THE COACH<small>by Suru · v0.9.0</small></div>';
   const button = (text, action, style = 'dark') => `<button class="btn ${style}" data-action="${action}">${text}</button>`;
   let view = 0, assessmentDraft = null;
-  const page = html => { ++view; assessmentDraft = null; root.innerHTML = `<main class="app">${html}</main>`; };
+  const page = (html, layout = '') => { ++view; assessmentDraft = null; root.innerHTML = `<main class="app ${layout}">${html}</main>`; };
   const head = (title, back) => `<div class="top">${back ? `<button class="back" data-action="${back}" aria-label="Voltar">‹</button>` : ''}${brand()}</div><h2>${escape(title)}</h2>`;
   const loading = () => page(brand() + '<div class="card" role="status">A carregar a tua área…</div>');
   let sb, account = null, students = [], selected = null, generation = 0, busy = false;
@@ -62,9 +62,13 @@
     if (!account) return;
     selected = null;
     if (coach()) {
-      page(head(`Olá, ${name(account)} 👋`) + `<p class="muted">${account.role === 'admin' ? 'Área de administração' : 'Área do treinador'}</p>` +
-        `<div class="grid"><div class="card stat"><b>${students.length}</b><span class="muted">Alunos associados</span></div><div class="card stat"><b>—</b><span class="muted">Treinos hoje</span></div></div>` +
-        '<div class="card notice"><b>Acompanhamento</b><p class="muted">Consulta os alunos associados à tua conta.</p></div>' + button('Gerir alunos', 'list') + button('Terminar sessão', 'logout', 'light'));
+      page(window.CoachTrainerDashboard.shell(account), 'trainer-app');
+      const ticket = generation, screen = view, actor = account;
+      window.CoachTrainerDashboard.mount(root.querySelector('.trainer-app'), {
+        client: sb, account, students,
+        valid: () => ticket === generation && screen === view && actor === account,
+        open: destination => list(destination === 'list' ? '' : destination), profile, logout
+      });
     } else {
       selected = account;
       studentPanel();
@@ -75,16 +79,33 @@
     const context=currentContext();
     window.mountStudentDashboard(root.querySelector('#studentDashboard'),{client:sb,account:context.actor,studentId:context.studentId,studentName:name(selected),valid:context.valid,initialScreen,back:list,open:action=>action==='logout'?logout():modulePage(action),openTraining:route=>modulePage('plan',route)});
   }
-  function list() {
+  function coachPage(title,active,content,subtitle='') {
+    const T=window.CoachTrainerDashboard;
+    page(T.frame(account,{active,title:account.role==='admin'?'Área de administração':'Área do treinador',content:
+      `<div class="tc-page"><header class="tc-heading"><div><p class="tc-eyebrow">${active==='list'?'ACOMPANHAMENTO':active==='plan'?'PLANEAMENTO DE TREINO':active==='progress'?'EVOLUÇÃO DOS ALUNOS':'ACOMPANHAMENTO NUTRICIONAL'}</p><h1>${escape(title)}</h1><p>${escape(subtitle)}</p></div><span class="tc-heading-icon ${active==='nutrition'?'mint':active==='plan'?'peach':active==='progress'?'lavender':'blue'}">${T.icon(active==='list'?'users':active==='plan'?'training':active==='progress'?'progress':'nutrition')}</span></header>${content}</div>`}), 'trainer-app');
+    const ticket=generation,screen=view;
+    T.mountNavigation(root.querySelector('.trainer-app'),{
+      valid:()=>ticket===generation&&screen===view&&coach(),
+      canLeave:()=>{const area=root.querySelector('#nutritionArea')||root.querySelector('#workoutArea');return !area?.canLeave||area.canLeave();},
+      navigate:key=>{if(key==='logout')return logout();if(key==='home'||key==='calendar'){dashboard();if(key==='calendar')root.querySelector('#trainer-calendar')?.scrollIntoView({behavior:'smooth'});return;}list(key==='list'?'':key);}
+    });
+  }
+  function list(destination = '') {
     if (!coach()) return;
     selected = null;
-    page(head('Alunos', 'dashboard') + (students.length ? students.map(s =>
-      `<button type="button" class="card student" data-student="${escape(s.id)}" style="width:100%;border:0;text-align:left;font:inherit;color:inherit"><span class="avatar">${escape(name(s)[0])}</span><span class="student-info"><b>${escape(name(s))}</b><span class="muted" style="display:block">Aluno associado</span></span><span>›</span></button>`).join('') : '<div class="card"><h3>Ainda não tens alunos associados</h3><p class="muted">Os alunos aparecem aqui quando forem associados à tua conta.</p></div>'));
+    const purpose = {plan: 'criar ou gerir treinos', nutrition: 'criar ou gerir nutrição', progress: 'ver o progresso'}[destination];
+    const initials=s=>name(s).split(/\s+/).slice(0,2).map(v=>v[0]).join('');
+    const studentCards=students.map(s=>`<article class="tc-student-card" data-student-card="${escape(name(s))}"><span class="tc-student-badge">Aluno associado</span><button type="button" class="tc-student-profile" data-student="${escape(s.id)}" data-destination="${escape(purpose?destination:'')}"><span class="td-avatar">${escape(initials(s))}</span><h2>${escape(name(s))}</h2><span>${purpose?'Selecionar aluno':'Abrir acompanhamento'} <span aria-hidden="true">↗</span></span></button><div class="tc-student-actions">${[['plan','Treinos'],['nutrition','Nutrição'],['progress','Progresso']].map(([route,label])=>`<button type="button" data-student="${escape(s.id)}" data-destination="${route}">${label}</button>`).join('')}</div></article>`).join('');
+    coachPage(purpose?{plan:'Treinos',nutrition:'Nutrição',progress:'Progresso'}[destination]:'Alunos',purpose?destination:'list',
+      `<section id="trainerStudents"><div class="tc-directory-toolbar"><label>Pesquisar alunos<input class="input" type="search" data-student-search placeholder="Pesquisar por nome…" autocomplete="off"></label><span class="tc-count" data-search-count role="status">${students.length} ${students.length===1?'aluno':'alunos'}</span></div><div class="tc-student-grid">${studentCards}</div><div class="tc-empty" data-search-empty ${students.length?'hidden':''}><h2>${students.length?'Nenhum aluno encontrado':'Ainda não tens alunos associados'}</h2><p>${students.length?'Experimenta outro nome ou limpa a pesquisa.':'Os alunos aparecem aqui quando forem associados à tua conta.'}</p></div></section>`,
+      purpose?`Escolhe um aluno para ${purpose}.`:'Cada aluno tem um caminho. Acompanha todos, num só lugar.');
+    window.CoachTrainerDashboard.mountDirectory(root.querySelector('#trainerStudents'));
   }
-  function profile(id) {
+  function profile(id, destination) {
     if (!coach()) return;
     selected = students.find(s => s.id === id);
     if (!selected) return list();
+    if (['plan', 'nutrition', 'progress'].includes(destination)) return modulePage(destination);
     studentPanel();
   }
   const moduleItems = [
@@ -109,13 +130,17 @@
       return;
     }
     if (action === 'nutrition') {
-      page(head('Nutrição') + '<section id="nutritionArea" style="overflow-wrap:anywhere"></section>');
+      const content='<section id="nutritionArea" class="tc-module tc-nutrition" style="overflow-wrap:anywhere"></section>';
+      if(coach())coachPage('Nutrição','nutrition',content,name(selected)+' · Alimentação alinhada com os objetivos.');
+      else page(head('Nutrição')+content);
       const context = currentContext();
       window.mountCoachNutrition(root.querySelector('#nutritionArea'), {client: sb, account: context.actor, studentId: context.studentId, studentName: name(selected), valid: context.valid, back: () => coach() ? profile(context.studentId) : dashboard()});
       return;
     }
     if (action === 'plan') {
-      page(head('Plano de treino') + '<section id="workoutArea" style="overflow-wrap:anywhere"></section>');
+      const content='<section id="workoutArea" class="tc-module tc-workouts" style="overflow-wrap:anywhere"></section>';
+      if(coach())coachPage('Plano de treino','plan',content,name(selected)+' · Planeia, acompanha e ajusta cada etapa.');
+      else page(head('Plano de treino')+content);
       const context = currentContext();
       window.mountCoachWorkouts(root.querySelector('#workoutArea'), {client: sb, account: context.actor, studentId: context.studentId, valid: context.valid, back: () => coach() ? profile(context.studentId) : dashboard(),initialRoute});
       return;
@@ -231,7 +256,7 @@
   root.addEventListener('click', event => {
     const target = event.target.closest('button');
     if (!target) return;
-    if (target.dataset.student) return profile(target.dataset.student);
+    if (target.dataset.student) return profile(target.dataset.student, target.dataset.destination);
     const action = target.dataset.action;
     if (action === 'logout') return logout();
     if (action === 'retry') return retry();

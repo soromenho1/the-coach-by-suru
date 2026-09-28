@@ -17,7 +17,9 @@ window.mountCoachWorkouts = function(container, {client, account, studentId, val
   const busy=new WeakSet();
   const current=token=>()=>valid()&&revision===token;
   const notice=text=>text?`<div class="card" role="status">${esc(text)}</div>`:'';
-  const nav=()=>btn('Voltar','back','','light');
+  const nav=()=>`<div class="tc-module-back">${btn('Voltar','back','','light')}</div>`;
+  container.canLeave=()=>!finishing&&!container.querySelector('form button[type="submit"]:disabled');
+  const editorLayout=(content,editor)=>coach?`<div class="tc-editor-layout"><section class="tc-records">${content}</section><aside class="tc-editor">${editor}</aside></div>`:content+editor;
   function previous(){if(route.type==='exercise')return show(route.parent);if(route.type==='plans')return back();if(route.type==='plan'||route.type==='history')return show({type:'plans'});if(route.type==='workout')return show({type:'plan',id:ctx.plan.id});if(route.type==='session')return show({type:'history'});}
   function planForm(){return form('plan','Novo plano',field('name','Nome do plano')+field('objective','Objetivo')+pair(field('start_date','Data de início',today(),'date'),field('end_date','Data de fim (opcional)','','date'))+'<label>Estado<select name="active" style="font-size:16px"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>');}
   function workoutForm(id){return form('workout','Novo treino',field('name','Nome do treino')+field('position','Ordem',1,'text','numeric'),id);}
@@ -70,13 +72,14 @@ window.mountCoachWorkouts = function(container, {client, account, studentId, val
       let html='';
       if(next.type==='plans'){
         const plans=await W.plans(client,account,studentId);
-        html='<h2>Planos de treino</h2>'+(coach?btn('Planos mensais · rever e aprovar','monthly','','green'):'')+btn('Histórico de sessões','history','','light')+(plans.length?plans.map(p=>`<div class="card"><h3>${esc(p.name)}</h3><span class="tag">${p.active?'ATIVO':'INATIVO'}</span><p class="muted" style="margin-top:12px">${esc(p.objective||'Objetivo por definir')}</p><p class="muted">${date(p.start_date)} → ${date(p.end_date)}</p>${btn('Abrir plano','plan',p.id)}</div>`).join(''):'<div class="card">Ainda não existem planos de treino.</div>')+(coach?planForm():'');
+        const cards=plans.length?plans.map(p=>`<div class="card tc-plan-card"><div class="tc-plan-top"><span class="tc-mini-icon">↗</span><span class="tag ${p.active?'':'tc-inactive'}">${p.active?'ATIVO':'INATIVO'}</span></div><h3>${esc(p.name)}</h3><p class="muted">${esc(p.objective||'Objetivo por definir')}</p><p class="tc-plan-dates">${date(p.start_date)} → ${date(p.end_date)}</p>${btn('Abrir plano','plan',p.id)}</div>`).join(''):'<div class="card tc-empty"><h3>O próximo objetivo começa aqui.</h3><p>Ainda não existem planos de treino.</p></div>';
+        html='<div class="tc-section-title"><h2>Planos de treino</h2><span class="tc-count">'+plans.length+' '+(plans.length===1?'plano':'planos')+'</span></div><div class="tc-toolbar">'+(coach?btn('Planos mensais · rever e aprovar','monthly','','light'):'')+btn('Histórico de sessões','history','','light')+'</div>'+editorLayout('<div class="tc-plan-grid">'+cards+'</div>',coach?planForm():'');
       }else if(next.type==='plan'){
         const data=await W.planDetail(client,account,studentId,next.id);if(!live())return;ctx=data;
-        html=`<h2>${esc(data.plan.name)}</h2><p class="muted">${esc(data.plan.objective||'')}</p>`+(coach?btn(data.plan.active?'Desativar plano':'Ativar plano','toggle',data.plan.id,'light'):'')+(data.workouts.length?data.workouts.map(w=>`<div class="card"><h3>${esc(w.name)}</h3>${btn('Abrir treino','workout',w.id)}</div>`).join(''):'<div class="card">Ainda não existem treinos neste plano.</div>')+(coach?workoutForm(next.id):'');
+        html=`<div class="tc-plan-intro"><span class="tc-eyebrow">PLANO DE TREINO</span><h2>${esc(data.plan.name)}</h2><p>${esc(data.plan.objective||'Objetivo por definir')}</p><div class="tc-toolbar">${coach?btn(data.plan.active?'Desativar plano':'Ativar plano','toggle',data.plan.id,'light'):''}</div></div>`+editorLayout(data.workouts.length?'<div class="tc-plan-grid">'+data.workouts.map((w,i)=>`<div class="card tc-plan-card"><span class="tc-order">${String(i+1).padStart(2,'0')}</span><h3>${esc(w.name)}</h3>${btn('Abrir treino','workout',w.id)}</div>`).join('')+'</div>':'<div class="card tc-empty">Ainda não existem treinos neste plano.</div>',coach?workoutForm(data.plan.id):'');
       }else if(next.type==='workout'){
         const data=await W.workout(client,account,studentId,next.id);const history=await W.history(client,account,studentId);if(!live())return;ctx={...data,history,startId:window.crypto.randomUUID()};
-        html=`<h2>${esc(data.workout.name)}</h2>`+(data.exercises.length?exerciseList(data.exercises):'<div class="card">Ainda não existem exercícios neste treino.</div>')+(coach?exerciseForm(next.id):'');
+        html=`<div class="tc-section-title"><h2>${esc(data.workout.name)}</h2><span class="tc-count">${data.exercises.length} exercícios</span></div>`+editorLayout(data.exercises.length?exerciseList(data.exercises):'<div class="card tc-empty">Ainda não existem exercícios neste treino.</div>',coach?exerciseForm(next.id):'');
         if(student)html+=W.available(data.plan,today())&&data.exercises.length?btn('Iniciar treino / Retomar','start',next.id,'green'):'<div class="card notice">Treino indisponível: confirma o período e estado do plano ou aguarda os exercícios do treinador.</div>';
       }else if(next.type==='exercise'){
         if(next.parent.type==='session'){

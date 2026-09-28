@@ -8,6 +8,7 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
   let busy=false,alive=true,generation=0,ctx=null,targets=[],plans=[],draft=null,dayIndex=0,offset=0,dirty=false;
   const requests={};
   const current=()=>alive&&container.isConnected&&valid();
+  container.canLeave=()=>!busy&&(!dirty||window.confirm('Descartar alterações por guardar?'));
   const today=()=>ctx?.calculated_on||new Date().toISOString().slice(0,10);
   const canPrepare=()=>['READY','DIABETES_DRAFT'].includes(ctx?.review_status);
   const clinicalRequired=()=>ctx?.reasons?.includes('diabetes');
@@ -26,13 +27,12 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     if(el){el.textContent=text;el.setAttribute('role',error?'alert':'status');if(error)el.focus();}
   }
   function shell(content){
-    container.innerHTML='<style>#nutritionArea .row>*{min-width:0}#nutritionArea small{overflow-wrap:anywhere}#nutritionArea input,#nutritionArea select{font-size:16px;min-width:0}#nutritionArea fieldset{min-width:0;border:1px solid #dbe3ed;border-radius:12px;margin:12px 0;padding:12px}#nutritionArea button:disabled{opacity:.55}#nutritionArea .n-totals{line-height:1.6}#nutritionArea summary{padding:12px 0;cursor:pointer}</style>'+button('Voltar','back')+
-      `<p class="muted">${esc(studentName||account.full_name||'Aluno')}</p><h2>Nutrição</h2><div data-n-message role="status" aria-live="polite" tabindex="-1"></div>`+content;
+    container.innerHTML='<style>#nutritionArea .row>*{min-width:0}#nutritionArea small{overflow-wrap:anywhere}#nutritionArea input,#nutritionArea select{font-size:16px;min-width:0}#nutritionArea fieldset{min-width:0;border:1px solid #dbe3ed;border-radius:12px;margin:12px 0;padding:12px}#nutritionArea button:disabled{opacity:.55}#nutritionArea .n-totals{line-height:1.6}#nutritionArea summary{padding:12px 0;cursor:pointer}</style>'+`<div class="tc-module-back">${button('Voltar','back')}</div>`+
+      (coach&&container.closest('.trainer-app')?'':`<p class="muted">${esc(studentName||account.full_name||'Aluno')}</p><h2>Nutrição</h2>`)+`<div data-n-message role="status" aria-live="polite" tabindex="-1"></div>`+content;
   }
   function targetHtml(t){
     if(!t)return '<p>Ainda não existem metas nutricionais guardadas.</p>';
-    return `<h3>${esc(goals[t.goal_type]||t.goal_type)}</h3>${t.calculation_input_snapshot?.clinical_review_required?'<p class="notice">Estimativa associada a um plano com revisão obrigatória do professor.</p>':''}<p>${fmt(t.final_calorie_target,'kcal')} · Água: ${fmt(t.final_water_ml??t.calculated_water_ml,'ml')}</p>
-      <p>Proteína ${fmt(t.protein_g,'g')} · Gordura ${fmt(t.fat_g,'g')} · Hidratos ${fmt(t.carbohydrate_g,'g')}</p>
+    return `<h3>${esc(goals[t.goal_type]||t.goal_type)}</h3>${t.calculation_input_snapshot?.clinical_review_required?'<p class="notice">Estimativa associada a um plano com revisão obrigatória do professor.</p>':''}<div class="tc-nutrient-grid">${[['Energia',t.final_calorie_target,'kcal','peach'],['Proteína',t.protein_g,'g','blue'],['Hidratos',t.carbohydrate_g,'g','mint'],['Gordura',t.fat_g,'g','lavender']].map(([label,value,unit,color])=>`<div class="tc-nutrient ${color}"><span>${label}</span><strong>${fmt(value)}</strong><small>${unit}</small></div>`).join('')}</div><p class="tc-water-target">Água · ${fmt(t.final_water_ml??t.calculated_water_ml,'ml')}</p>
       <details><summary>Ver cálculo e origem</summary><p>TMB: ${fmt(t.bmr_kcal,'kcal')} · Fator: ${fmt(t.activity_factor)} · TDEE: ${fmt(t.tdee_kcal,'kcal')}</p>
       <p>Meta calculada: ${fmt(t.calculated_calorie_target,'kcal')} · Ajuste: ${fmt(t.final_calorie_target-t.calculated_calorie_target,'kcal')}</p>
       <p>${esc(t.override_reason||'Sem ajuste manual.')} · ${esc(t.effective_from||today())}</p>
@@ -115,7 +115,7 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     return `<b>Hidratos da refeição: ${fmt(N.totals({meals:[m]}).carbohydrate_g,'g')}</b>${g?`<br>Orientação registada: ${fmt(g.carbs_min)}–${fmt(g.carbs_max,'g')} · ${esc(g.time)}`:''}`;
   }
   function readPlan(p){
-    return `<article class="card"><span class="tag">${esc(states[p.status]||p.status)}</span><h3 style="margin-top:12px">${esc(p.name)}</h3><p>${esc(p.week_start)} → ${esc(p.week_end)} · ${esc(p.objective)}</p>
+    return `<article class="card tc-meal-plan"><span class="tag">${esc(states[p.status]||p.status)}</span><h3 style="margin-top:12px">${esc(p.name)}</h3><p>${esc(p.week_start)} → ${esc(p.week_end)}${p.objective?' · '+esc(p.objective):''}</p>
       ${(p.days||[]).map(d=>`<details><summary>Dia ${d.position} · ${esc(d.day_date)}</summary>${totalsHtml(d,p.target)}${(d.meals||[]).map(m=>`<h4>${esc(m.name)} ${esc(m.scheduled_time?.slice(0,5)||'')}</h4><p><b>Hidratos da refeição: ${fmt(N.totals({meals:[m]}).carbohydrate_g,'g')}</b></p><p>${esc(m.notes)}</p>${m.items?.length?m.items.map(x=>`<div class="card"><b>${esc(x.display_name)}</b><p>${fmt(x.quantity)} ${esc(x.unit)}${x.grams?` · ${fmt(x.grams,'g')}`:''}</p><p>${fmt(x.kcal,'kcal')} · P ${fmt(x.protein_g,'g')} · G ${fmt(x.fat_g,'g')} · H ${fmt(x.carbohydrate_g,'g')}</p><small>Fonte: ${esc(x.nutrition_source)} · ${esc(x.source_checked_on)} ${esc(x.source_version)}</small></div>`).join(''):'<p>Sem alimentos.</p>'}`).join('')}</details>`).join('')}
       ${coach&&(p.trainer_id===account.id||ctx.can_clinical_review)&&['draft','pending_review'].includes(p.status)?button('Editar plano','edit',`data-plan="${esc(p.id)}"`)+button(p.status==='draft'?'Enviar para revisão':clinicalRequired()?'Autorizar plano e disponibilizar ao aluno':'Aprovar e disponibilizar ao aluno',p.status==='draft'?'review':'approve',`data-plan="${esc(p.id)}" ${!canPrepare()||(p.status==='pending_review'&&clinicalRequired()&&!ctx.can_clinical_review)?'disabled':''}`,'green')+(p.status==='pending_review'&&clinicalRequired()&&!ctx.can_clinical_review?'<p>Aguarda aprovação de um professor associado ao aluno.</p>':''):''}</article>`;
   }
@@ -123,10 +123,10 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     if(!current())return;
     if(draft)return renderEditor();
     shell(`<div class="card notice"><p>Estimativas nutricionais para revisão pelo treinador. Situações clínicas exigem acompanhamento profissional.</p></div>${reviewHtml()}
-      <section class="card">${targetHtml(targets[0])}</section>${coach?profileHtml()+clinicalHtml()+targetForm():''}
-      <h3>Planos alimentares</h3>${coach?'<p class="muted">No editor: pesquisa USDA por alimento e preparação, ou adiciona um produto pelo rótulo. PortFIR aguarda importação da tabela oficial. A geração automática mantém o catálogo CoFID validado.</p>':''}${plans.length?plans.map(readPlan).join(''):'<p>Ainda não existem planos alimentares disponíveis.</p>'}
+      <section class="card tc-target"><p class="tc-eyebrow">META NUTRICIONAL MAIS RECENTE</p>${targetHtml(targets[0])}</section><div class="tc-nutrition-settings">${coach?profileHtml()+clinicalHtml()+targetForm():''}</div>
+      <div class="tc-section-title"><h3>Planos alimentares</h3><span class="tc-count">${plans.length} nesta página</span></div>${coach?'<p class="muted">Planos semanais, refeições e quantidades, organizados para cada objetivo.</p>':''}<div class="tc-meal-plans">${plans.length?plans.map(readPlan).join(''):'<div class="card tc-empty"><h3>Alimentar a evolução.</h3><p>Ainda não existem planos alimentares disponíveis.</p></div>'}</div>
       <div class="row">${offset?button('Mais recentes','previous'):''}${plans.length===20?button('Mais antigos','next'):''}</div>
-      ${coach?`<details class="card"><summary>Criar plano semanal</summary><form data-n-form="create">${input('name','Nome do plano','Plano alimentar','text','maxlength="150" required')}${input('week_start','Primeiro dia',today(),'date','required')}${input('objective','Objetivo do plano','','text','maxlength="1000"')}${input('meals_per_day','Número de refeições por dia',ctx.profile?.meals_per_day||4,'number','min="1" max="12" step="1" required')}${select('nutrition_target_id','Meta associada',targets.find(t=>t.trainer_id===account.id)?.id,targetOptions())}${select('fill_mode','Preenchimento','automatic',[['automatic','Gerar alimentos e quantidades para revisão'],['manual','Preencher manualmente']])}${generationHelp()}<button class="btn green" type="submit">Criar rascunho semanal</button></form></details>`:''}`);
+      ${coach?`<details class="card tc-create-meal"><summary>Criar plano semanal</summary><form data-n-form="create">${input('name','Nome do plano','Plano alimentar','text','maxlength="150" required')}${input('week_start','Primeiro dia',today(),'date','required')}${input('objective','Objetivo do plano','','text','maxlength="1000"')}${input('meals_per_day','Número de refeições por dia',ctx.profile?.meals_per_day||4,'number','min="1" max="12" step="1" required')}${select('nutrition_target_id','Meta associada',targets.find(t=>t.trainer_id===account.id)?.id,targetOptions())}${select('fill_mode','Preenchimento','automatic',[['automatic','Gerar alimentos e quantidades para revisão'],['manual','Preencher manualmente']])}${generationHelp()}<button class="btn green" type="submit">Criar rascunho semanal</button></form></details>`:''}`);
   }
   function catalogPicker(i){
     const C=window.CoachFoodCatalog;
@@ -143,7 +143,7 @@ window.mountCoachNutrition=function(container,{client,account,studentId,studentN
     const d=draft.days[dayIndex],target=targets.find(t=>t.id===draft.nutrition_target_id)||draft.target;
     const mealField=(i,k)=>`data-meal="${i}" data-field="${k}"`;
     const itemField=(i,j,k)=>`data-meal="${i}" data-item="${j}" data-field="${k}"`;
-    shell(`<h3>Editar plano</h3><p data-n-dirty>${dirty?'Alterações por guardar.':'Sem alterações por guardar.'}</p><form data-n-form="edit">
+    shell(`<div class="tc-section-title"><h3>Editar plano</h3><span class="tc-count">Dia ${dayIndex+1} de ${draft.days.length}</span></div><p data-n-dirty>${dirty?'Alterações por guardar.':'Sem alterações por guardar.'}</p><form data-n-form="edit">
       ${input('name','Nome do plano',draft.name,'text','data-plan-field="name" maxlength="150" required')}${input('objective','Objetivo do plano',draft.objective,'text','data-plan-field="objective" maxlength="1000"')}
       ${select('nutrition_target_id','Meta associada',draft.nutrition_target_id,targetOptions(draft.nutrition_target_id),'data-plan-field="nutrition_target_id"')}
       ${button('Gerar alimentos para os sete dias','generate-foods')}${generationHelp()}

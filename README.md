@@ -1,4 +1,4 @@
-# The Coach by Suru · v0.8
+# The Coach by Suru · v0.9.0
 
 
 A v0.8 inclui anamnese, planos mensais, séries flexíveis e Nutrição. As migrações de Nutrição foram aplicadas ao Supabase. Ver [revisão da v0.8](V08-REVIEW.md) para a configuração original dos planos mensais e scheduler; as secções abaixo descrevem também as funcionalidades posteriores.
@@ -177,3 +177,25 @@ Os valores publicados por 100 g de parte comestível são escalados pela quantid
 **PortFIR ainda não importado:** o endereço oficial apresenta certificado expirado nesta verificação. Não foi desativada a validação TLS nem inventados valores portugueses. Para completar a prioridade PortFIR, é necessário obter o Excel oficial da versão 7.1, confirmar os campos/condições de reutilização e importar os dados com a identificação original. A geração automática continua a usar o catálogo CoFID existente; esta alteração acrescenta pesquisa/seleção e rótulos ao editor, sem substituir planos já guardados.
 
 Os dados USDA são CC0: U.S. Department of Agriculture, Agricultural Research Service, FoodData Central. https://fdc.nal.usda.gov/ . O importador reproduzível está em `scripts/import-usda.py`, com URLs oficiais, hashes das transferências e exclusões em `scripts/usda-import-manifest.json`. Os ZIPs originais ficam em `work/` (ignorado pelo Git); não são necessárias chaves API no navegador. Os ficheiros publicados são `food-catalog-data.js` e `food-catalog.js`. Testes cobrem fontes, quantidades, pesquisa, rótulos, gravação e reabertura em PostgreSQL isolado; não há migrações nem alterações aos dados de produção.
+
+
+## Ecrã inicial do treinador — 27/09/2026
+
+O painel responsivo do treinador/admin usa `trainer-dashboard.js` e `trainer-dashboard.css`, carregados em `index.html` e integrados em `app.js`. Reutiliza `suru-fitness.png`. A saudação usa o primeiro nome do perfil autenticado. Os atalhos de treinos, nutrição e progresso abrem a seleção de um aluno associado e depois o módulo existente; não criam dados ao clicar.
+
+As quatro métricas mostram associações ativas, planos de treino ativos dentro da validade, sessões iniciadas no dia local e avaliações desde o início do mês até hoje. As consultas são paginadas e limitadas aos IDs associados já carregados pela sessão; as políticas RLS continuam a controlar o acesso. Falhas parciais mostram «Indisponível», nunca um zero inventado. Respostas de um ecrã ou sessão anterior são descartadas.
+
+«Alunos recentes» ordena os alunos pela atividade disponível (avaliações deste mês e sessões de hoje); os restantes aparecem por nome, sem inventar datas de associação. «Calendário de hoje» mostra sessões reais e respetivo estado, não compromissos futuros: ainda não existe uma agenda de marcações integrada.
+
+Verificação local: `node --test tests/*.test.cjs`, `node tests/browser-trainer.cjs` e `node tests/browser-dashboard.cjs`. O teste do treinador usa os fixtures existentes, com chamadas remotas intercetadas; cobre atalhos, dados, ausência de alunos, falhas parciais, logout durante leitura e larguras 320/390/768/1440 px, incluindo abertura por ficheiro. `COACH_OUTPUT` permite escolher a pasta das capturas. Não requer migração, publicação ou alteração da autenticação.
+
+
+### Continuidade visual: alunos, treinos e nutrição
+
+A mesma sidebar e identidade visual acompanham agora a seleção de alunos e os módulos do treinador. A lista permite pesquisar por nome (sem distinguir acentos/maiúsculas), mostra o número de resultados e dá acesso direto aos treinos, nutrição e progresso de cada aluno associado.
+
+O módulo de treinos organiza planos e treinos em cartões, com os formulários ao lado em ecrãs largos e abaixo em telemóvel. Nutrição mostra energia e macronutrientes em cartões, preferências e metas em secções expansíveis, planos semanais e editor com a mesma linguagem visual. Cálculos, dados, permissões, gravações, revisões e aprovações mantêm os serviços existentes.
+
+A navegação da sidebar respeita a confirmação já existente para descartar edições nutricionais e não sai durante uma gravação desse módulo. O módulo de treinos também impede esta navegação durante gravações. Não são criados alunos, medições, planos ou refeições pelo novo layout.
+
+Verificação adicional: navegador do treinador com pesquisa e atalhos a 320/390/768/1440 px; fluxo completo de treinos a 390/1440 px; nutrição com PostgreSQL isolado a 390/1440 px, incluindo cálculo, edição, aprovação, acesso do aluno, catálogo, cancelamento da saída pela sidebar e ausência de transbordo horizontal. Sem escrita de teste na base real, deploy ou commits.
