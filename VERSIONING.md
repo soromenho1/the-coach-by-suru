@@ -1,6 +1,6 @@
 # Versões da aplicação
 
-Versão atual: **0.9.0**.
+Versão atual: **0.10.0**.
 
 Por indicação do utilizador, atualizar a versão em cada entrega:
 - Nova funcionalidade ou alteração funcional de layout: incrementar MINOR (0.9.0 → 0.10.0).

@@ -5,7 +5,7 @@
   const root = document.querySelector('#app');
   const assessments = window.CoachAssessments;
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const brand = () => '<div class="brand">THE COACH<small>by Suru · v0.9.0</small></div>';
+  const brand = () => '<div class="brand">THE COACH<small>by Suru · v0.10.0</small></div>';
   const button = (text, action, style = 'dark') => `<button class="btn ${style}" data-action="${action}">${text}</button>`;
   let view = 0, assessmentDraft = null;
   const page = (html, layout = '') => { ++view; assessmentDraft = null; root.innerHTML = `<main class="app ${layout}">${html}</main>`; };
@@ -16,11 +16,7 @@
   const clear = () => { ++view; assessmentDraft = null; account = null; students = []; selected = null; };
   const name = profile => profile.full_name?.trim() || 'Utilizador';
   function login(message = '') {
-    page(brand() + '<div class="hero"><h1>Bem-vindo ao<br>The Coach.</h1><p class="muted">Entra com a tua conta.</p></div>' +
-      `<form id="loginForm" class="card"><h3>Login</h3>${message ? `<p role="alert" style="color:#c0392b">${escape(message)}</p>` : ''}` +
-      '<label>Email<input name="email" class="input" type="email" autocomplete="email" required></label>' +
-      '<label>Password<input name="password" class="input" type="password" autocomplete="current-password" required></label>' +
-      '<button class="btn dark" type="submit">Entrar</button></form><p class="muted" style="text-align:center;margin-top:28px">The Coach by Suru · conta segura</p>');
+    page(`<section class="login-visual" aria-label="The Coach by Suru"><div class="login-logo">THE<span>COACH</span><small>by Suru</small></div><p class="login-motto">MAIS DISCIPLINA.<br>MAIS RESULTADOS.<br>UM TU MAIS FORTE.</p></section><section class="login-content" aria-label="Login"><div class="login-intro"><p class="login-eyebrow">O TEU PRÓXIMO PASSO</p><h1>O teu progresso<br>começa aqui.</h1><p>Entra na tua conta.</p></div><form id="loginForm">${message ? `<p class="login-alert" role="alert">${escape(message)}</p>` : ''}<label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" required><label for="loginPassword">Palavra-passe</label><div class="login-password"><input id="loginPassword" name="password" type="password" autocomplete="current-password" required><button type="button" class="login-eye" data-action="showPassword" aria-label="Mostrar palavra-passe" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div><details class="login-help"><summary>Precisas de ajuda para entrar?</summary><p>Contacta o teu treinador ou o administrador da app para obteres ajuda com o acesso à tua conta.</p></details><button class="login-submit" type="submit">Entrar <span aria-hidden="true">↗</span></button></form><p class="login-footer">THE COACH by Suru <span>v0.10.0</span></p></section>`, 'login-app');
   }
   function failure(message) {
     clear();
@@ -260,6 +256,15 @@
     const action = target.dataset.action;
     if (action === 'logout') return logout();
     if (action === 'retry') return retry();
+    if (action === 'showPassword') {
+      const input = root.querySelector('#loginPassword');
+      if (!input) return;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      target.setAttribute('aria-pressed', String(show));
+      target.setAttribute('aria-label', show ? 'Ocultar palavra-passe' : 'Mostrar palavra-passe');
+      return;
+    }
     if (!account) return;
     if (action === 'statsRetry') return refreshStats();
     if (action === 'historyRetry' || action === 'progressRetry') return refreshHistory(action === 'progressRetry' ? 'progress' : 'evals');
@@ -274,14 +279,14 @@
     event.preventDefault();
     if (busy || !sb) return;
     const email = event.target.elements.email.value.trim(), password = event.target.elements.password.value;
-    if (!email || !password) return login('Preenche o email e a password.');
+    if (!email || !password) return login('Preenche o email e a palavra-passe.');
     busy = true;
-    const submit = event.target.querySelector('button');
+    const submit = event.target.querySelector('button[type="submit"]');
     submit.disabled = true; submit.textContent = 'A entrar…';
     const ticket = generation;
     try {
       const {error} = await sb.auth.signInWithPassword({email, password});
-      if (error && ticket === generation) login('Não foi possível entrar. Verifica o email e a password e tenta novamente.');
+      if (error && ticket === generation) login('Não foi possível entrar. Verifica o email e a palavra-passe e tenta novamente.');
     } catch { if (ticket === generation) login('Não foi possível ligar ao serviço. Verifica a ligação e tenta novamente.'); }
     finally { busy = false; }
   });

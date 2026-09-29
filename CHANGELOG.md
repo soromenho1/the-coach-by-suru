@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## 0.10.0 — 2026-09-28
+
+- Login desportivo com fotografia a preto e branco, fundo escuro e botão bege.
+- Mostrar/ocultar palavra-passe e informação de ajuda de acesso.
+- Versão discreta no rodapé do login.
+
 ## 0.9.0 — 2026-09-28
 
 - Novo painel do treinador com navegação lateral, métricas, alunos recentes e calendário de sessões.
