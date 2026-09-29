@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## 0.11.0 — 2026-09-29
+
+- Meta de água estimada pelo último peso válido quando não existe meta nutricional.
+- Origem, data e regra do cálculo visíveis; metas nutricionais existentes mantêm prioridade.
+
 ## 0.10.0 — 2026-09-28
 
 - Login desportivo com fotografia a preto e branco, fundo escuro e botão bege.
