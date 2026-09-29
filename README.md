@@ -1,4 +1,4 @@
-# The Coach by Suru · v0.11.1
+# The Coach by Suru · v0.12.0
 
 
 A v0.8 inclui anamnese, planos mensais, séries flexíveis e Nutrição. As migrações de Nutrição foram aplicadas ao Supabase. Ver [revisão da v0.8](V08-REVIEW.md) para a configuração original dos planos mensais e scheduler; as secções abaixo descrevem também as funcionalidades posteriores.

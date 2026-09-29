@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## 0.12.0 — 2026-09-29
+
+- Hidratação semanal: últimos sete dias, total, média e valores por dia.
+
 ## 0.11.1 — 2026-09-29
 
 - Metas estimadas de água arredondadas para cima em passos de 250 ml. Metas individuais definidas na Nutrição são preservadas.

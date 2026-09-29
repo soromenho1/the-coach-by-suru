@@ -18,6 +18,9 @@
     const target=plan?.target||targets.find(t=>t.effective_from<=day&&(!t.effective_until||t.effective_until>=day));
     return {target,plan,meals:date?.meals||[],hasMeals:items.length>0,totals:items.length?Object.fromEntries(['kcal','protein_g','fat_g','carbohydrate_g'].map(k=>[k,sum(items,k)])):null};
   }
+  function waterWeek(logs,day){
+    return Array.from({length:7},(_,i)=>{const d=new Date(day+'T12:00:00');d.setDate(d.getDate()-6+i);const date=dayOf(d),entries=logs.filter(r=>(r.local_date||dayOf(new Date(r.logged_at)))===date);return {date,ml:sum(entries,'amount_ml'),count:entries.length};});
+  }
   function hydrationGoal(n,assessments=[]){
     const explicit=n?.target?.final_water_ml??n?.target?.calculated_water_ml;
     if(Number(explicit)>0)return {ml:Number(explicit),estimated:false};
@@ -43,9 +46,9 @@
     const week=new Date(day+'T12:00:00');week.setDate(week.getDate()-6);const weekStart=dayOf(week);
     const results=await Promise.allSettled([
       (async()=>{if(!isStudent)return {restricted:true,ml:null,rows:[]};const [modern,legacy]=await Promise.all([
-        rows(()=>client.from('hydration_logs').select('id,amount_ml,logged_at').eq('student_id',s).eq('local_date',day).order('id')),
-        rows(()=>client.from('water_logs').select('id,amount_ml,logged_at').eq('student_id',s).gte('logged_at',from).lt('logged_at',to).order('id'))]);
-        const ids=new Set(modern.map(r=>r.id)),logs=[...modern,...legacy.filter(r=>!ids.has(r.id))];return {ml:sum(logs,'amount_ml'),rows:logs};})(),
+        rows(()=>client.from('hydration_logs').select('id,amount_ml,logged_at,local_date').eq('student_id',s).gte('local_date',weekStart).lte('local_date',day).order('id')),
+        rows(()=>client.from('water_logs').select('id,amount_ml,logged_at').eq('student_id',s).gte('logged_at',bounds(weekStart)[0]).lt('logged_at',to).order('id'))]);
+        const ids=new Set(modern.map(r=>r.id)),logs=[...modern,...legacy.filter(r=>!ids.has(r.id))];const today=logs.filter(r=>(r.local_date||dayOf(new Date(r.logged_at)))===day);return {ml:sum(today,'amount_ml'),rows:today,week:waterWeek(logs,day)};})(),
       (async()=>{const [plans,targets]=await Promise.all([
         rows(()=>client.from('meal_plans').select('id,name,status,week_start,week_end,target:nutrition_targets!meal_plans_nutrition_target_id_fkey(final_calorie_target,protein_g,fat_g,carbohydrate_g,final_water_ml,calculated_water_ml),days:meal_plan_days(day_date,meals:meal_plan_meals(id,name,position,scheduled_time,notes,items:meal_plan_items(id,display_name,quantity,unit,grams,position,kcal,protein_g,fat_g,carbohydrate_g)))').eq('student_id',s).eq('status','approved').lte('week_start',day).gte('week_end',day).order('approved_at',{ascending:false}).order('id')),
         rows(()=>client.from('nutrition_targets').select('id,effective_from,effective_until,final_calorie_target,protein_g,fat_g,carbohydrate_g,final_water_ml,calculated_water_ml').eq('student_id',s).lte('effective_from',day).order('effective_from',{ascending:false}).order('created_at',{ascending:false}).order('id'))]);const n=nutrition(plans,targets,day);n.waterGoal=hydrationGoal(n);
@@ -109,7 +112,7 @@
         <div class="sd-upcoming">${[t?.current,...t?.upcoming||[]].filter(Boolean).slice(0,2).map(workout=>`<button type="button" data-sd="workout-preview" data-id="${esc(workout.id)}"><span class="sd-workout-thumb"></span><span><b>${esc(workout.name)}</b><small>${esc(t?.plan?.name||'Plano de treino')}</small></span><span class="sd-play">${icon('play')}</span></button>`).join('')||empty(data?'Ainda não tens um plano ativo.':'A carregar…')}</div>
         <details class="sd-more" ${moreOpen?'open':''}><summary>Mais acompanhamento</summary>${[['anam','Anamnese'],['evals','Avaliação física'],['progress','Evolução'],['checkin','Check-in semanal'],['plan','Gerir planos de treino'],['nutrition-full','Plano alimentar completo']].map(([a,l])=>btn(l,a)).join('')}${btn('Atualizar','refresh')}${btn('Terminar sessão','logout')}</details>`;
     }
-    let waterInfo=false,waterGoal=false,reminders=false,reminderTimer=null;
+    let waterPeriod='today',waterInfo=false,waterGoal=false,reminders=false,reminderTimer=null;
     const reminderKey='suru-water-reminders:'+account.id;
     try{reminders=own&&window.localStorage.getItem(reminderKey)==='true';}catch{}
     function scheduleReminder(){
@@ -118,6 +121,11 @@
       reminderTimer=window.setTimeout(()=>{if(!current())return;if(reminders){notice('Lembrete de hidratação: verifica o teu consumo e regista a água que bebeste.');scheduleReminder();}},3600000);
     }
     const mlText=v=>v==null?'—':Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+    function waterWeekly(w){
+      if(!w||w.error||w.restricted)return empty('Sem dados de consumo disponíveis.');
+      const days=w.week||[],total=days.reduce((s,d)=>s+d.ml,0),top=Math.max(500,...days.map(d=>Math.ceil(d.ml/250)*250));
+      return `<p class="sd-week-summary">Total: <b>${mlText(total)} ml</b> · Média diária: <b>${mlText(total/7)} ml</b></p><div class="sd-water-chart"><div class="sd-water-axis"><span>${mlText(top)}</span><span>${mlText(top/2)}</span><span>0</span></div><div class="sd-water-columns" role="img" aria-label="${days.map(d=>d.date+': '+d.ml+' ml').join('; ')}">${days.map(d=>`<div><i style="height:${d.ml/top*100}%" title="${d.date}: ${d.ml} ml"></i><small>${d.date.slice(8)}/${d.date.slice(5,7)}</small></div>`).join('')}</div></div><details class="sd-week-records"><summary>Ver valores por dia</summary>${days.map(d=>`<p>${d.date.split('-').reverse().join('/')} · <b>${mlText(d.ml)} ml</b>${d.count?'':' · Sem registos'}</p>`).join('')}</details><p class="sd-week-note">Inclui hoje. Dias sem registos contam como 0 ml na média; isso não significa que não tenhas bebido água.</p>`;
+    }
     function waterPage(){
       const w=data?.water,goal=data?.nutrition?.waterGoal?.ml??data?.nutrition?.target?.final_water_ml??data?.nutrition?.target?.calculated_water_ml;
       const consumed=w&&!w.error&&!w.restricted?w.ml:null,percent=goal>0&&consumed!=null?Math.round(consumed/goal*100):null,left=goal>0&&consumed!=null?Math.max(0,goal-consumed):null;
@@ -128,7 +136,7 @@
       ${w?.restricted?empty('O consumo de água é privado e pode ser consultado na conta do aluno.'):w?.error?empty('Não foi possível carregar o consumo. Tenta atualizar.'):''}${own?waterButtons():''}
       ${data?.nutrition?.waterGoal?.estimated?`<section class="sd-water-info"><b>Meta estimada pelo peso</b><p>${fmt(data.nutrition.waterGoal.weight,'kg')} · avaliação de ${esc(data.nutrition.waterGoal.date)} · 35 ml/kg, arredondado para cima de 250 em 250 ml: ${mlText(goal)} ml/dia.</p><p>Estimativa para revisão pelo treinador. Uma indicação individual de hidratação ou restrição de líquidos deve prevalecer.</p>${btn('Rever nas metas nutricionais','nutrition-full')}</section>`:''}
       <section class="sd-water-stats" aria-label="Resumo de hidratação">${[['◎','Objetivo diário',goal],['water','Consumido',consumed],['◷','Falta',left]].map(([i,l,v])=>`<div><span class="sd-water-stat-icon">${i==='water'?icon(i):i}</span><div><small>${l}</small><b>${mlText(v)}${v==null?'':' ml'}</b></div></div>`).join('')}</section>
-      <section class="sd-water-chart-panel"><div class="sd-section-heading"><h2>Hoje</h2>${btn('›','water-history','aria-label="Ver registos de água"','sd-text')}</div>${consumed==null?empty('Sem dados de consumo disponíveis.'):`<div class="sd-water-chart"><div class="sd-water-axis"><span>${mlText(top)}</span><span>${mlText(top/2)}</span><span>0</span></div><div class="sd-water-columns" role="img" aria-label="${values.map((v,i)=>String((i+first)*2).padStart(2,'0')+' horas: '+v+' ml').join('; ')}">${values.map((v,i)=>`<div><i style="height:${v/top*100}%" title="${v} ml"></i><small>${String((i+first)*2).padStart(2,'0')}h</small></div>`).join('')}</div></div>`}
+      <section class="sd-water-chart-panel"><div class="sd-section-heading"><h2>${waterPeriod==='week'?'Últimos 7 dias':'Hoje'}</h2>${btn('›','water-history','aria-label="Ver registos de água"','sd-text')}</div><div class="sd-water-period" role="group" aria-label="Período da hidratação">${btn('Hoje','water-today',`aria-pressed="${waterPeriod==='today'}"`)}${btn('Semana','water-week',`aria-pressed="${waterPeriod==='week'}"`)}</div>${waterPeriod==='week'?waterWeekly(w):consumed==null?empty('Sem dados de consumo disponíveis.'):`<div class="sd-water-chart"><div class="sd-water-axis"><span>${mlText(top)}</span><span>${mlText(top/2)}</span><span>0</span></div><div class="sd-water-columns" role="img" aria-label="${values.map((v,i)=>String((i+first)*2).padStart(2,'0')+' horas: '+v+' ml').join('; ')}">${values.map((v,i)=>`<div><i style="height:${v/top*100}%" title="${v} ml"></i><small>${String((i+first)*2).padStart(2,'0')}h</small></div>`).join('')}</div></div>`}
       <details class="sd-history"><summary>Registos de hoje</summary>${(w?.rows||[]).slice().sort((a,b)=>String(b.logged_at).localeCompare(String(a.logged_at))).map(r=>`<p>${new Date(r.logged_at).toLocaleTimeString('pt-PT',{hour:'2-digit',minute:'2-digit'})} · ${fmt(r.amount_ml,'ml')}</p>`).join('')||empty('Ainda sem registos.')}</details></section>
       <div class="sd-water-options"><button type="button" class="sd-water-option" data-sd="water-reminders" role="switch" aria-checked="${reminders}" aria-label="Lembretes de hidratação" ${!own?'disabled':''}><span class="sd-water-option-icon">${icon('bell')}</span><span><b>Lembretes</b><small>Avisos nesta área,<br>a cada hora.</small></span><span class="sd-switch ${reminders?'on':''}"><i></i></span></button><button type="button" class="sd-water-option" data-sd="water-goal" aria-label="Consultar objetivo de água" aria-expanded="${waterGoal}"><span class="sd-water-option-icon">◎</span><span><b>Objetivo</b><small>${goal?mlText(goal)+' ml/dia':'Por definir no plano'}</small></span><span class="sd-water-chevron">›</span></button></div>
       ${waterGoal?`<section class="sd-water-info"><b>Objetivo do teu plano</b><p>${goal?'O teu objetivo atual é '+mlText(goal)+' ml por dia.':'Ainda não existe um objetivo de água no plano.'} ${data?.nutrition?.waterGoal?.estimated?'Esta meta é estimada pelo último peso registado e pode ser ajustada nas metas nutricionais.':'O objetivo é definido nas metas nutricionais pelo treinador.'}</p>${btn('Consultar plano alimentar','nutrition-full')}</section>`:''}
@@ -182,6 +190,7 @@
       if(['home','water','nutrition','training','cardio'].includes(a))return navigate(a);
       if(a==='back-coach')return back?.();
       if(a==='water-add')return record('water',{amount_ml:Number(b.dataset.ml)});
+      if(a==='water-today'||a==='water-week'){waterPeriod=a==='water-week'?'week':'today';render();return;}
       if(a==='water-info'){waterInfo=!waterInfo;render();return;}
       if(a==='water-goal'){waterGoal=!waterGoal;render();return;}
       if(a==='water-reminders'&&own){reminders=!reminders;try{window.localStorage.setItem(reminderKey,String(reminders));}catch{}scheduleReminder();render();notice(reminders?'Lembretes ativos a cada hora enquanto esta área estiver aberta.':'Lembretes desativados.');return;}
@@ -206,5 +215,5 @@
     container.addEventListener('submit',event=>{if(!event.target.matches('[data-sd-cardio]'))return;event.preventDefault();const f=event.target,minutes=Number(f.elements.minutes.value);if(!Number.isInteger(minutes)||minutes<1||minutes>1440){notice('Indica uma duração entre 1 e 1440 minutos.',true);return;}record('cardio',{type:f.elements.type.value,duration_minutes:minutes});});
     scheduleReminder();render();refresh().catch(()=>notice('Não foi possível carregar o painel.',true));
   }
-  return {dayOf,bounds,nutrition,hydrationGoal,sequence,load,save,mount};
+  return {dayOf,bounds,waterWeek,nutrition,hydrationGoal,sequence,load,save,mount};
 });
