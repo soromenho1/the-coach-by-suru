@@ -45,7 +45,7 @@
     const s=studentId,[from,to]=bounds(day);
     const week=new Date(day+'T12:00:00');week.setDate(week.getDate()-6);const weekStart=dayOf(week);
     const results=await Promise.allSettled([
-      (async()=>{if(!isStudent)return {restricted:true,ml:null,rows:[]};const [modern,legacy]=await Promise.all([
+      (async()=>{const [modern,legacy]=await Promise.all([
         rows(()=>client.from('hydration_logs').select('id,amount_ml,logged_at,local_date').eq('student_id',s).gte('local_date',weekStart).lte('local_date',day).order('id')),
         rows(()=>client.from('water_logs').select('id,amount_ml,logged_at').eq('student_id',s).gte('logged_at',bounds(weekStart)[0]).lt('logged_at',to).order('id'))]);
         const ids=new Set(modern.map(r=>r.id)),logs=[...modern,...legacy.filter(r=>!ids.has(r.id))];const today=logs.filter(r=>(r.local_date||dayOf(new Date(r.logged_at)))===day);return {ml:sum(today,'amount_ml'),rows:today,week:waterWeek(logs,day)};})(),

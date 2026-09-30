@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## 0.13.0 — 2026-09-29
+
+- Treinadores podem consultar hidratação diária e semanal dos alunos com associação ativa.
+- Registo de consumo continua reservado ao próprio aluno.
+
 ## 0.12.0 — 2026-09-29
 
 - Hidratação semanal: últimos sete dias, total, média e valores por dia.
